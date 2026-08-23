@@ -1,0 +1,254 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <header class="topbar tasks-topbar">
+    <div class="brand-block">
+      <a href="{{ url_for('dashboard') }}" class="back-link" aria-label="Back to dashboard">←</a>
+      <div>
+        <p class="eyebrow">Mission board</p>
+        <h1>Tasks</h1>
+      </div>
+    </div>
+    <button class="primary-action" type="button" data-open-modal="task-modal">+ Add</button>
+  </header>
+
+  {% if success_message %}
+    <div class="toast success-toast">{{ success_message }}</div>
+  {% endif %}
+
+  {% if error_message %}
+    <div class="toast error-toast">{{ error_message }}</div>
+  {% endif %}
+
+  <main class="tasks-page">
+    <section class="card summary-card">
+      <div class="card-head">
+        <h2>TODAY</h2>
+        <span class="tag tag-purple">{{ summary.total_tasks }} Tasks</span>
+      </div>
+
+      <div class="summary-progress">
+        <div class="summary-track">
+          <div class="summary-fill" style="width: {{ summary.completion_rate }}%;"></div>
+        </div>
+        <span>{{ summary.completion_rate }}%</span>
+      </div>
+
+      <div class="summary-grid">
+        <div>
+          <span class="label">Completed</span>
+          <strong>{{ summary.completed_count }}</strong>
+        </div>
+        <div>
+          <span class="label">Remaining</span>
+          <strong>{{ summary.pending_count }}</strong>
+        </div>
+      </div>
+
+      <div class="overdue-row">
+        <span class="warning-dot">⚠️</span>
+        <span>{{ summary.overdue_count }} overdue mission{% if summary.overdue_count != 1 %}s{% endif %}</span>
+      </div>
+    </section>
+
+    <section class="card filter-card">
+      <div class="filter-group">
+        <label>
+          <span>Status</span>
+          <select id="statusFilter" data-filter-type="status">
+            {% for option in statuses %}
+              <option value="{{ option }}" {% if selected_status == option %}selected{% endif %}>{{ option }}</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <label>
+          <span>Subject</span>
+          <select id="subjectFilter" data-filter-type="subject">
+            <option value="All" {% if selected_subject == 'All' %}selected{% endif %}>All</option>
+            {% for subject in subjects %}
+              <option value="{{ subject }}" {% if selected_subject == subject %}selected{% endif %}>{{ subject }}</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <label>
+          <span>Priority</span>
+          <select id="priorityFilter" data-filter-type="priority">
+            <option value="All" {% if selected_priority == 'All' %}selected{% endif %}>All</option>
+            <option value="High" {% if selected_priority == 'High' %}selected{% endif %}>High</option>
+            <option value="Medium" {% if selected_priority == 'Medium' %}selected{% endif %}>Medium</option>
+            <option value="Low" {% if selected_priority == 'Low' %}selected{% endif %}>Low</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="sort-row">
+        <label>
+          <span>Sort by</span>
+          <select id="sortFilter" data-filter-type="sort">
+            <option value="deadline" {% if selected_sort == 'deadline' %}selected{% endif %}>Deadline</option>
+            <option value="priority" {% if selected_sort == 'priority' %}selected{% endif %}>Priority</option>
+            <option value="estimated_minutes" {% if selected_sort == 'estimated_minutes' %}selected{% endif %}>Estimated duration</option>
+            <option value="created_at" {% if selected_sort == 'created_at' %}selected{% endif %}>Recently created</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <section class="task-list">
+      {% if tasks %}
+        {% for task in tasks %}
+          <article
+            class="task-card {% if task.status == 'Completed' %}is-complete{% endif %} {% if task.deadline and task.status != 'Completed' and task.deadline < today %}is-overdue{% endif %}"
+            data-id="{{ task.id }}"
+            data-title="{{ task.title | e }}"
+            data-subject="{{ task.subject | e }}"
+            data-chapter="{{ task.chapter | e }}"
+            data-priority="{{ task.priority | e }}"
+            data-estimated-minutes="{{ task.estimated_minutes }}"
+            data-deadline="{{ task.deadline or '' }}"
+            data-status="{{ task.status | e }}"
+          >
+            <div class="task-top-row">
+              <div>
+                <h3>{{ task.title }}</h3>
+                <p class="task-meta">{{ task.subject }}{% if task.chapter %} · {{ task.chapter }}{% endif %}</p>
+              </div>
+              <span class="priority-badge priority-{{ task.priority | lower }}">
+                {% if task.priority == 'High' %}⚠️ High{% elif task.priority == 'Medium' %}⏳ Medium{% else %}🌿 Low{% endif %}
+              </span>
+            </div>
+
+            <div class="task-details">
+              <div><span>Duration</span><strong>{{ task.estimated_minutes }} min</strong></div>
+              <div><span>Deadline</span><strong>{{ task.deadline or 'No deadline' }}</strong></div>
+              <div><span>Status</span><strong>{{ task.status }}</strong></div>
+            </div>
+
+            <div class="task-actions">
+              <form method="post" action="{{ url_for('update_task_status', task_id=task.id) }}">
+                <input type="hidden" name="status" value="Pending" />
+                <button type="submit" class="mini-button">Mark Pending</button>
+              </form>
+              <form method="post" action="{{ url_for('update_task_status', task_id=task.id) }}">
+                <input type="hidden" name="status" value="In Progress" />
+                <button type="submit" class="mini-button">Mark In Progress</button>
+              </form>
+              <form method="post" action="{{ url_for('update_task_status', task_id=task.id) }}">
+                <input type="hidden" name="status" value="Completed" />
+                <button type="submit" class="mini-button success">Mark Complete</button>
+              </form>
+              <button class="mini-button subtle" type="button" data-edit-task="{{ task.id }}">Edit</button>
+              <form method="post" action="{{ url_for('delete_task', task_id=task.id) }}" onsubmit="return confirm('Remove this mission from your plan?');">
+                <button type="submit" class="mini-button danger">Delete</button>
+              </form>
+            </div>
+          </article>
+        {% endfor %}
+      {% else %}
+        <div class="empty-state large-empty">
+          <div class="empty-icon">✨</div>
+          <p>No missions yet. Let's plan your day ✨</p>
+        </div>
+      {% endif %}
+    </section>
+  </main>
+
+  <div class="modal hidden" id="task-modal" aria-hidden="true">
+    <div class="modal-backdrop" data-close-modal="task-modal"></div>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>Add Task</h2>
+        <button class="close-button" type="button" data-close-modal="task-modal">×</button>
+      </div>
+
+      <form method="post" action="{{ url_for('add_task') }}" class="task-form">
+        <label>
+          <span>Task title *</span>
+          <input type="text" name="title" placeholder="Revise Organic Chemistry" required />
+        </label>
+
+        <div class="two-col">
+          <label>
+            <span>Subject</span>
+            <select name="subject">
+              {% for subject in subjects %}
+                <option value="{{ subject }}">{{ subject }}</option>
+              {% endfor %}
+            </select>
+          </label>
+
+          <label>
+            <span>Chapter</span>
+            <input type="text" name="chapter" placeholder="Alkyl Halides" />
+          </label>
+        </div>
+
+        <div class="two-col">
+          <label>
+            <span>Priority</span>
+            <select name="priority">
+              <option value="High">High</option>
+              <option value="Medium" selected>Medium</option>
+              <option value="Low">Low</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Estimated study time (minutes)</span>
+            <input type="number" name="estimated_minutes" min="1" step="1" value="45" required />
+          </label>
+        </div>
+
+        <div class="two-col">
+          <label>
+            <span>Deadline</span>
+            <input type="date" name="deadline" />
+          </label>
+
+          <label>
+            <span>Status</span>
+            <select name="status">
+              <option value="Pending" selected>Pending</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Completed">Completed</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="secondary-button" data-close-modal="task-modal">Cancel</button>
+          <button type="submit" class="primary-action">Save task</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <nav class="bottom-nav" aria-label="Main navigation">
+    <a class="nav-item" href="{{ url_for('dashboard') }}">
+      <span>🏠</span>
+      <small>Dashboard</small>
+    </a>
+    <a class="nav-item active" href="{{ url_for('tasks_page') }}">
+      <span>✅</span>
+      <small>Tasks</small>
+    </a>
+    <a class="nav-item" href="{{ url_for('timer_page') }}">
+      <span>⏱️</span>
+      <small>Timer</small>
+    </a>
+    <a class="nav-item" href="{{ url_for('analytics_page') }}">
+      <span>📊</span>
+      <small>Analytics</small>
+    </a>
+    <button class="nav-item" type="button">
+      <span>📝</span>
+      <small>Tests</small>
+    </button>
+    <button class="nav-item" type="button">
+      <span>⋯</span>
+      <small>More</small>
+    </button>
+  </nav>
+{% endblock %}

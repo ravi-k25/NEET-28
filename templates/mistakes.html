@@ -1,0 +1,146 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <header class="topbar tasks-topbar">
+    <div class="brand-block">
+      <a href="{{ url_for('dashboard') }}" class="back-link" aria-label="Back to dashboard">←</a>
+      <div>
+        <p class="eyebrow">Error log</p>
+        <h1>Mistake Book</h1>
+      </div>
+    </div>
+    <button class="primary-action" type="button" data-open-modal="mistake-modal">+ Add</button>
+  </header>
+
+  {% if success_message %}
+    <div class="toast success-toast">{{ success_message }}</div>
+  {% endif %}
+
+  {% if error_message %}
+    <div class="toast error-toast">{{ error_message }}</div>
+  {% endif %}
+
+  <main class="tasks-page">
+    <section class="card summary-card">
+      <div class="card-head">
+        <h2>ERROR REVIEW</h2>
+        <span class="tag tag-purple">{{ summary.total }} entries</span>
+      </div>
+      <div class="summary-grid">
+        <div><span class="label">Open</span><strong>{{ summary.open }}</strong></div>
+        <div><span class="label">Reviewed</span><strong>{{ summary.reviewed }}</strong></div>
+        <div><span class="label">Total</span><strong>{{ summary.total }}</strong></div>
+      </div>
+    </section>
+
+    <section class="task-list">
+      {% if mistakes %}
+        {% for mistake in mistakes %}
+          <article class="task-card">
+            <div class="task-top-row">
+              <div>
+                <h3>{{ mistake.subject }} {% if mistake.chapter %}· {{ mistake.chapter }}{% endif %}</h3>
+                <p class="task-meta">{{ mistake.mistake_type }} · {{ mistake.review_date }}</p>
+              </div>
+              <span class="priority-badge priority-medium">{{ mistake.status }}</span>
+            </div>
+
+            <div class="task-details">
+              <div><span>Question</span><strong>{{ mistake.question or '—' }}</strong></div>
+              <div><span>Why wrong</span><strong>{{ mistake.why_wrong or '—' }}</strong></div>
+              <div><span>Correct concept</span><strong>{{ mistake.correct_concept or '—' }}</strong></div>
+            </div>
+
+            <form method="post" action="{{ url_for('update_mistake_status', mistake_id=mistake.id) }}">
+              <div class="two-col">
+                <label>
+                  <span>Status</span>
+                  <select name="status">
+                    <option value="Open" {% if mistake.status == 'Open' %}selected{% endif %}>Open</option>
+                    <option value="Reviewed" {% if mistake.status == 'Reviewed' %}selected{% endif %}>Reviewed</option>
+                    <option value="Repeated" {% if mistake.status == 'Repeated' %}selected{% endif %}>Repeated</option>
+                  </select>
+                </label>
+                <div class="form-actions" style="align-items: end;">
+                  <button type="submit" class="primary-action">Save</button>
+                </div>
+              </div>
+            </form>
+
+            <div class="task-actions" style="margin-top: 0.75rem;">
+              <form method="post" action="{{ url_for('delete_mistake', mistake_id=mistake.id) }}" onsubmit="return confirm('Delete this mistake entry?');">
+                <button type="submit" class="mini-button danger">Delete</button>
+              </form>
+            </div>
+          </article>
+        {% endfor %}
+      {% else %}
+        <div class="empty-state large-empty">
+          <div class="empty-icon">📝</div>
+          <p>No mistakes tracked yet.</p>
+        </div>
+      {% endif %}
+    </section>
+  </main>
+
+  <div class="modal hidden" id="mistake-modal" aria-hidden="true">
+    <div class="modal-backdrop" data-close-modal="mistake-modal"></div>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>Add Mistake</h2>
+        <button class="close-button" type="button" data-close-modal="mistake-modal">×</button>
+      </div>
+
+      <form method="post" action="{{ url_for('add_mistake') }}" class="task-form">
+        <div class="two-col">
+          <label>
+            <span>Subject</span>
+            <select name="subject">
+              {% for subject in subjects %}
+                <option value="{{ subject }}">{{ subject }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            <span>Chapter</span>
+            <input type="text" name="chapter" placeholder="Respiration" />
+          </label>
+        </div>
+        <label>
+          <span>Question</span>
+          <input type="text" name="question" placeholder="The oxygen transport in lungs was misunderstood" required />
+        </label>
+        <div class="two-col">
+          <label>
+            <span>Mistake type</span>
+            <input type="text" name="mistake_type" placeholder="Conceptual" />
+          </label>
+          <label>
+            <span>Review date</span>
+            <input type="date" name="review_date" value="{{ today if today else '' }}" />
+          </label>
+        </div>
+        <label>
+          <span>Why wrong</span>
+          <textarea name="why_wrong" rows="2" style="width: 100%; border: 1px solid rgba(122, 108, 244, 0.15); border-radius: 0.9rem; padding: 0.7rem 0.8rem; font: inherit;"></textarea>
+        </label>
+        <label>
+          <span>Correct concept</span>
+          <textarea name="correct_concept" rows="2" style="width: 100%; border: 1px solid rgba(122, 108, 244, 0.15); border-radius: 0.9rem; padding: 0.7rem 0.8rem; font: inherit;"></textarea>
+        </label>
+        <div class="form-actions">
+          <button type="button" class="secondary-button" data-close-modal="mistake-modal">Cancel</button>
+          <button type="submit" class="primary-action">Save mistake</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <nav class="bottom-nav" aria-label="Main navigation">
+    <a class="nav-item" href="{{ url_for('dashboard') }}"><span>🏠</span><small>Dashboard</small></a>
+    <a class="nav-item" href="{{ url_for('tasks_page') }}"><span>✅</span><small>Tasks</small></a>
+    <a class="nav-item" href="{{ url_for('timer_page') }}"><span>⏱️</span><small>Timer</small></a>
+    <a class="nav-item" href="{{ url_for('analytics_page') }}"><span>📊</span><small>Analytics</small></a>
+    <a class="nav-item active" href="{{ url_for('mistakes_page') }}"><span>📘</span><small>Mistakes</small></a>
+  </nav>
+{% endblock %}

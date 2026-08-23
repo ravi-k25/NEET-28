@@ -1,0 +1,86 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <header class="topbar">
+    <div class="brand-block">
+      <div class="brand-icon">N</div>
+      <div>
+        <p class="eyebrow">NEET Study Companion</p>
+        <h1>Settings</h1>
+      </div>
+    </div>
+    <a class="icon-button" href="{{ url_for('dashboard') }}" aria-label="Go back home">🏠</a>
+  </header>
+
+  <main class="dashboard">
+    <section class="card">
+      <div class="card-head">
+        <h2>Personal Productivity</h2>
+      </div>
+      <form method="post" action="{{ url_for('settings_page') }}" class="settings-form">
+        <label class="toggle-row">
+          <span>Strict mode</span>
+          <input type="checkbox" name="strict_mode" {% if settings.strict_mode %}checked{% endif %} />
+        </label>
+
+        <label class="field-label" for="preferred_study_mode">Preferred study mode</label>
+        <select name="preferred_study_mode" id="preferred_study_mode">
+          {% for key, preset in timer_presets.items() %}
+            <option value="{{ key }}" {% if key == settings.preferred_study_mode %}selected{% endif %}>{{ preset.label }}</option>
+          {% endfor %}
+        </select>
+
+        <label class="toggle-row">
+          <span>Break messages</span>
+          <input type="checkbox" name="break_message_toggle" {% if settings.break_message_toggle %}checked{% endif %} />
+        </label>
+
+        <label class="toggle-row">
+          <span>Achievement celebrations</span>
+          <input type="checkbox" name="achievement_celebration_toggle" {% if settings.achievement_celebration_toggle %}checked{% endif %} />
+        </label>
+
+        <label class="toggle-row">
+          <span>Daily motivational messages</span>
+          <input type="checkbox" name="daily_motivational_messages_toggle" {% if settings.daily_motivational_messages_toggle %}checked{% endif %} />
+        </label>
+
+        <button class="action-button primary" type="submit">Save Settings</button>
+      </form>
+    </section>
+
+    {% if success_message %}
+      <div class="success-banner">{{ success_message }}</div>
+    {% endif %}
+    {% if error_message %}
+      <div class="error-banner">{{ error_message }}</div>
+    {% endif %}
+  </main>
+
+  <nav class="bottom-nav" aria-label="Main navigation">
+    <a class="nav-item" href="{{ url_for('dashboard') }}">
+      <span>🏠</span>
+      <small>Dashboard</small>
+    </a>
+    <a class="nav-item" href="{{ url_for('tasks_page') }}">
+      <span>✅</span>
+      <small>Tasks</small>
+    </a>
+    <a class="nav-item" href="{{ url_for('timer_page') }}">
+      <span>⏱️</span>
+      <small>Timer</small>
+    </a>
+    <a class="nav-item" href="{{ url_for('analytics_page') }}">
+      <span>📊</span>
+      <small>Analytics</small>
+    </a>
+    <a class="nav-item" href="{{ url_for('tests_page') }}">
+      <span>📝</span>
+      <small>Tests</small>
+    </a>
+    <a class="nav-item active" href="{{ url_for('settings_page') }}">
+      <span>⚙️</span>
+      <small>Settings</small>
+    </a>
+  </nav>
+{% endblock %}

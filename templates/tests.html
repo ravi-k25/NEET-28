@@ -1,0 +1,206 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <header class="topbar tasks-topbar">
+    <div class="brand-block">
+      <a href="{{ url_for('dashboard') }}" class="back-link" aria-label="Back to dashboard">←</a>
+      <div>
+        <p class="eyebrow">Mock test planner</p>
+        <h1>Tests</h1>
+      </div>
+    </div>
+    <button class="primary-action" type="button" data-open-modal="test-modal">+ Add</button>
+  </header>
+
+  {% if success_message %}
+    <div class="toast success-toast">{{ success_message }}</div>
+  {% endif %}
+
+  {% if error_message %}
+    <div class="toast error-toast">{{ error_message }}</div>
+  {% endif %}
+
+  <main class="tasks-page">
+    <section class="card summary-card">
+      <div class="card-head">
+        <h2>TEST ROADMAP</h2>
+        <span class="tag tag-purple">{{ summary.total }} total</span>
+      </div>
+
+      <div class="summary-grid">
+        <div>
+          <span class="label">Upcoming</span>
+          <strong>{{ summary.upcoming }}</strong>
+        </div>
+        <div>
+          <span class="label">Completed</span>
+          <strong>{{ summary.completed }}</strong>
+        </div>
+      </div>
+
+      {% if next_test %}
+        <div class="best-day-box">
+          <p class="best-day-title">Next up</p>
+          <strong>{{ next_test.test_name }}</strong>
+          <small>{{ next_test.test_date }} · {{ next_test.test_time }}</small>
+        </div>
+      {% else %}
+        <div class="empty-state small-empty">
+          <p>No tests scheduled yet.</p>
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="task-list">
+      {% if tests %}
+        {% for test in tests %}
+          <article class="task-card">
+            <div class="task-top-row">
+              <div>
+                <h3>{{ test.test_name }}</h3>
+                <p class="task-meta">{{ test.test_date }} · {{ test.test_time }}</p>
+              </div>
+              <span class="priority-badge priority-medium">{{ test.status }}</span>
+            </div>
+
+            <div class="task-details">
+              <div><span>Subjects</span><strong>{{ test.subjects or 'All' }}</strong></div>
+              <div><span>Syllabus</span><strong>{{ test.syllabus or 'General' }}</strong></div>
+              <div><span>Notes</span><strong>{{ test.notes or '—' }}</strong></div>
+            </div>
+
+            {% if test.result %}
+              <div class="comparison-box">
+                <div class="comparison-row">
+                  <div class="stat-box"><span>Total score</span><strong>{{ test.result.total_score }}</strong></div>
+                  <div class="stat-box"><span>Percentage</span><strong>{{ test.result.percentage }}%</strong></div>
+                </div>
+                <div class="comparison-row">
+                  <div class="stat-box"><span>Accuracy</span><strong>{{ test.result.accuracy }}%</strong></div>
+                  <div class="stat-box"><span>Attempt rate</span><strong>{{ test.result.attempt_rate }}%</strong></div>
+                </div>
+              </div>
+            {% endif %}
+
+            <form method="post" action="{{ url_for('save_test_result', test_id=test.id) }}" class="task-form" style="margin-top: 1rem;">
+              <div class="two-col">
+                <label>
+                  <span>Physics</span>
+                  <input type="number" name="physics_score" value="{{ test.result.physics_score if test.result else 0 }}" min="0" />
+                </label>
+                <label>
+                  <span>Chemistry</span>
+                  <input type="number" name="chemistry_score" value="{{ test.result.chemistry_score if test.result else 0 }}" min="0" />
+                </label>
+              </div>
+              <div class="two-col">
+                <label>
+                  <span>Biology</span>
+                  <input type="number" name="biology_score" value="{{ test.result.biology_score if test.result else 0 }}" min="0" />
+                </label>
+                <label>
+                  <span>Total marks</span>
+                  <input type="number" name="total_marks" value="{{ test.result.total_marks if test.result else 0 }}" min="0" />
+                </label>
+              </div>
+              <div class="two-col">
+                <label>
+                  <span>Correct</span>
+                  <input type="number" name="correct" value="{{ test.result.correct if test.result else 0 }}" min="0" />
+                </label>
+                <label>
+                  <span>Incorrect</span>
+                  <input type="number" name="incorrect" value="{{ test.result.incorrect if test.result else 0 }}" min="0" />
+                </label>
+              </div>
+              <div class="two-col">
+                <label>
+                  <span>Unattempted</span>
+                  <input type="number" name="unattempted" value="{{ test.result.unattempted if test.result else 0 }}" min="0" />
+                </label>
+                <label>
+                  <span>Attempted</span>
+                  <input type="number" name="attempted" value="{{ test.result.attempted if test.result else 0 }}" min="0" />
+                </label>
+              </div>
+              <div class="two-col">
+                <label>
+                  <span>Silly mistakes</span>
+                  <input type="number" name="silly_mistakes" value="{{ test.result.silly_mistakes if test.result else 0 }}" min="0" />
+                </label>
+                <label>
+                  <span>Concept gaps</span>
+                  <input type="number" name="conceptual_mistakes" value="{{ test.result.conceptual_mistakes if test.result else 0 }}" min="0" />
+                </label>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="primary-action">Save result</button>
+              </div>
+            </form>
+          </article>
+        {% endfor %}
+      {% else %}
+        <div class="empty-state large-empty">
+          <div class="empty-icon">🎯</div>
+          <p>No tests added yet.</p>
+        </div>
+      {% endif %}
+    </section>
+  </main>
+
+  <div class="modal hidden" id="test-modal" aria-hidden="true">
+    <div class="modal-backdrop" data-close-modal="test-modal"></div>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>Add Test</h2>
+        <button class="close-button" type="button" data-close-modal="test-modal">×</button>
+      </div>
+
+      <form method="post" action="{{ url_for('add_test') }}" class="task-form">
+        <label>
+          <span>Test name *</span>
+          <input type="text" name="test_name" placeholder="Full Test 1" required />
+        </label>
+
+        <div class="two-col">
+          <label>
+            <span>Test date *</span>
+            <input type="date" name="test_date" required />
+          </label>
+          <label>
+            <span>Test time</span>
+            <input type="time" name="test_time" value="09:00" />
+          </label>
+        </div>
+
+        <label>
+          <span>Subjects</span>
+          <input type="text" name="subjects" placeholder="Physics, Chemistry, Biology" />
+        </label>
+
+        <label>
+          <span>Syllabus focus</span>
+          <input type="text" name="syllabus" placeholder="Mechanics + Organic Chemistry" />
+        </label>
+
+        <label>
+          <span>Notes</span>
+          <textarea name="notes" rows="3" style="width: 100%; border: 1px solid rgba(122, 108, 244, 0.15); border-radius: 0.9rem; padding: 0.7rem 0.8rem; font: inherit;"></textarea>
+        </label>
+
+        <div class="form-actions">
+          <button type="button" class="secondary-button" data-close-modal="test-modal">Cancel</button>
+          <button type="submit" class="primary-action">Schedule test</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <nav class="bottom-nav" aria-label="Main navigation">
+    <a class="nav-item" href="{{ url_for('dashboard') }}"><span>🏠</span><small>Dashboard</small></a>
+    <a class="nav-item" href="{{ url_for('tasks_page') }}"><span>✅</span><small>Tasks</small></a>
+    <a class="nav-item" href="{{ url_for('timer_page') }}"><span>⏱️</span><small>Timer</small></a>
+    <a class="nav-item" href="{{ url_for('analytics_page') }}"><span>📊</span><small>Analytics</small></a>
+    <a class="nav-item active" href="{{ url_for('tests_page') }}"><span>📝</span><small>Tests</small></a>
+  </nav>
+{% endblock %}

@@ -1,0 +1,329 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <header class="topbar tasks-topbar">
+    <div class="brand-block">
+      <a href="{{ url_for('dashboard') }}" class="back-link" aria-label="Back to dashboard">←</a>
+      <div>
+        <p class="eyebrow">Performance overview</p>
+        <h1>Analytics</h1>
+      </div>
+    </div>
+    <a class="primary-action" href="{{ url_for('timer_page') }}">Start Focus</a>
+  </header>
+
+  {% if success_message %}
+    <div class="toast success-toast">{{ success_message }}</div>
+  {% endif %}
+
+  <main class="analytics-page">
+    <section class="card analytics-summary">
+      <div class="card-head">
+        <h2>TODAY'S MISSION</h2>
+      </div>
+
+      <div class="metric-row">
+        <div>
+          <span class="label">Target</span>
+          <strong>{{ target_display }}</strong>
+        </div>
+        <div>
+          <span class="label">Studied</span>
+          <strong>{{ studied_display }}</strong>
+        </div>
+      </div>
+
+      <div class="metric-row compact">
+        <div>
+          <span class="label">Remaining</span>
+          <strong>{{ remaining_display }}</strong>
+        </div>
+        <div>
+          <span class="label">Progress</span>
+          <strong>{{ progress }}%</strong>
+        </div>
+      </div>
+
+      <div class="progress-track" aria-label="Today's study progress">
+        <div class="progress-fill" style="width: {{ progress }}%;"></div>
+      </div>
+
+      <div class="analytics-kpis">
+        <div>
+          <span class="label">Sessions</span>
+          <strong>{{ focus_sessions_today }}</strong>
+        </div>
+        <div>
+          <span class="label">Average Session</span>
+          <strong>{{ average_session_today | round(0) }}m</strong>
+        </div>
+      </div>
+
+      <p class="analytics-status">{{ status_message }}</p>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>THIS WEEK</h2>
+      </div>
+      <div class="weekly-chart-wrap">
+        <canvas id="weeklyChart" height="180"></canvas>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>SUBJECT DISTRIBUTION</h2>
+      </div>
+      <div class="subject-list">
+        {% for item in subject_breakdown %}
+          <div class="subject-row">
+            <div class="subject-topline">
+              <strong>{{ item.label }}</strong>
+              <span>{{ item.minutes // 60 }}h {{ '%02d' % (item.minutes % 60) }}m</span>
+            </div>
+            <div class="subject-bar-track">
+              <div class="subject-bar-fill" style="width: {{ item.percentage }}%;"></div>
+            </div>
+            <small>{{ item.percentage }}%</small>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>DAILY PRODUCTIVITY TREND</h2>
+        <div class="toggle-group">
+          <button class="toggle-button active" type="button" data-range="7">7 Days</button>
+          <button class="toggle-button" type="button" data-range="30">30 Days</button>
+        </div>
+      </div>
+      <div class="trend-chart-wrap">
+        <canvas id="trendChart" height="170"></canvas>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>BEST STUDY DAY</h2>
+      </div>
+      {% if best_day %}
+        <div class="best-day-box">
+          <p class="best-day-title">🏆 Best Day</p>
+          <h3>{{ best_day.day }}</h3>
+          <strong>{{ best_day.total_minutes // 60 }}h {{ '%02d' % (best_day.total_minutes % 60) }}m</strong>
+          <small>That's your current personal record 🔥</small>
+        </div>
+      {% else %}
+        <div class="empty-state small-empty">
+          <div class="empty-icon">🌱</div>
+          <p>Your study journey starts here 🌱</p>
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="card stats-grid-card">
+      <div class="card-head">
+        <h2>STUDY SESSION STATISTICS</h2>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-box">
+          <span>Total focus sessions</span>
+          <strong>{{ total_focus_sessions }}</strong>
+        </div>
+        <div class="stat-box">
+          <span>Total study hours</span>
+          <strong>{{ total_study_hours }}</strong>
+        </div>
+        <div class="stat-box">
+          <span>Average session</span>
+          <strong>{{ average_session_length | round(0) }}m</strong>
+        </div>
+        <div class="stat-box">
+          <span>Longest session</span>
+          <strong>{{ longest_session }}</strong>
+        </div>
+        <div class="stat-box">
+          <span>Current study streak</span>
+          <strong>{{ current_streak }} days</strong>
+        </div>
+        <div class="stat-box">
+          <span>Longest study streak</span>
+          <strong>{{ longest_streak }} days</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>STUDY TARGET SETTINGS</h2>
+      </div>
+      <form method="post" action="{{ url_for('update_daily_target') }}" class="target-form">
+        <div class="target-options">
+          {% for option in [6,7,8,9,10] %}
+            <label class="target-option">
+              <input type="radio" name="target" value="{{ option * 60 }}" {% if target_minutes == option * 60 %}checked{% endif %} />
+              <span>{{ option }}h</span>
+            </label>
+          {% endfor %}
+        </div>
+
+        <div class="custom-target">
+          <label>
+            <span>Custom target (hours)</span>
+            <input type="number" name="custom_target" min="1" step="0.5" placeholder="e.g. 8.5" />
+          </label>
+        </div>
+
+        <button class="primary-action full-width" type="submit">Save target</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>YOUR STUDY INSIGHTS</h2>
+      </div>
+      {% if insights %}
+        <ul class="insight-list">
+          {% for insight in insights %}
+            <li>{{ insight }}</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="empty-state small-empty">
+          <div class="empty-icon">🌱</div>
+          <p>Your study journey starts here 🌱</p>
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>THIS WEEK</h2>
+      </div>
+      <div class="comparison-box">
+        {% if weekly_comparison.label == 'Not enough data for comparison yet.' %}
+          <p>{{ weekly_comparison.label }}</p>
+        {% else %}
+          <div class="comparison-row">
+            <div>
+              <span class="label">Current week</span>
+              <strong>{{ weekly_comparison.current_minutes // 60 }}h {{ '%02d' % (weekly_comparison.current_minutes % 60) }}m</strong>
+            </div>
+            <div>
+              <span class="label">Previous week</span>
+              <strong>{{ weekly_comparison.previous_minutes // 60 }}h {{ '%02d' % (weekly_comparison.previous_minutes % 60) }}m</strong>
+            </div>
+          </div>
+          <div class="comparison-improvement">Improvement<br /><strong>{{ weekly_comparison.label }}</strong></div>
+        {% endif %}
+      </div>
+    </section>
+  </main>
+
+  <nav class="bottom-nav" aria-label="Main navigation">
+    <a class="nav-item" href="{{ url_for('dashboard') }}">
+      <span>🏠</span>
+      <small>Dashboard</small>
+    </a>
+    <a class="nav-item" href="{{ url_for('tasks_page') }}">
+      <span>✅</span>
+      <small>Tasks</small>
+    </a>
+    <a class="nav-item" href="{{ url_for('timer_page') }}">
+      <span>⏱️</span>
+      <small>Timer</small>
+    </a>
+    <a class="nav-item active" href="{{ url_for('analytics_page') }}">
+      <span>📊</span>
+      <small>Analytics</small>
+    </a>
+    <button class="nav-item" type="button">
+      <span>⋯</span>
+      <small>More</small>
+    </button>
+  </nav>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const weeklyChartEl = document.getElementById('weeklyChart');
+    const trendChartEl = document.getElementById('trendChart');
+
+    const weeklyData = {{ weekly_chart.values | tojson }};
+    const weeklyLabels = {{ weekly_chart.labels | tojson }};
+    const trend7 = {{ trend_7.values | tojson }};
+    const trend30 = {{ trend_30.values | tojson }};
+    const trend7Labels = {{ trend_7.labels | tojson }};
+    const trend30Labels = {{ trend_30.labels | tojson }};
+
+    if (weeklyChartEl) {
+      new Chart(weeklyChartEl, {
+        type: 'bar',
+        data: {
+          labels: weeklyLabels,
+          datasets: [{
+            data: weeklyData,
+            backgroundColor: ['#7a6cf4', '#8d86f7', '#9d95fb', '#6fc3d8', '#f7b2c4', '#ffb364', '#8bd6b1'],
+            borderRadius: 10,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: {
+                callback: (value) => `${value}h`
+              }
+            }
+          }
+        }
+      });
+    }
+
+    const trendChart = new Chart(trendChartEl, {
+      type: 'line',
+      data: {
+        labels: trend7Labels,
+        datasets: [{
+          data: trend7,
+          borderColor: '#7a6cf4',
+          backgroundColor: 'rgba(122,108,244,0.12)',
+          borderWidth: 3,
+          fill: true,
+          tension: 0.35,
+          pointRadius: 3,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: (value) => `${value}h`
+            }
+          }
+        }
+      }
+    });
+
+    document.querySelectorAll('.toggle-button').forEach((button) => {
+      button.addEventListener('click', () => {
+        document.querySelectorAll('.toggle-button').forEach((btn) => btn.classList.remove('active'));
+        button.classList.add('active');
+        const range = Number(button.dataset.range);
+        const labels = range === 30 ? trend30Labels : trend7Labels;
+        const values = range === 30 ? trend30 : trend7;
+        trendChart.data.labels = labels;
+        trendChart.data.datasets[0].data = values;
+        trendChart.update();
+      });
+    });
+  </script>
+{% endblock %}

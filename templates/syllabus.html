@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <header class="topbar tasks-topbar">
+    <div class="brand-block">
+      <a href="{{ url_for('dashboard') }}" class="back-link" aria-label="Back to dashboard">←</a>
+      <div>
+        <p class="eyebrow">Coverage tracker</p>
+        <h1>Syllabus</h1>
+      </div>
+    </div>
+  </header>
+
+  {% if success_message %}
+    <div class="toast success-toast">{{ success_message }}</div>
+  {% endif %}
+
+  {% if error_message %}
+    <div class="toast error-toast">{{ error_message }}</div>
+  {% endif %}
+
+  <main class="analytics-page">
+    <section class="card summary-card">
+      <div class="card-head">
+        <h2>SYLLABUS STATUS</h2>
+        <span class="tag tag-purple">{{ summary.completion_rate }}%</span>
+      </div>
+
+      <div class="summary-grid">
+        <div><span class="label">Completed</span><strong>{{ summary.completed }}</strong></div>
+        <div><span class="label">In Progress</span><strong>{{ summary.in_progress }}</strong></div>
+        <div><span class="label">Not Started</span><strong>{{ summary.not_started }}</strong></div>
+        <div><span class="label">Total topics</span><strong>{{ summary.total }}</strong></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Topic Progress</h2>
+      </div>
+
+      <div class="subject-list">
+        {% for row in syllabus_rows %}
+          <div class="subject-row">
+            <div class="subject-topline">
+              <strong>{{ row.subject }} · {{ row.chapter }}</strong>
+              <span>{{ row.status }}</span>
+            </div>
+            <small>{{ row.topic }}</small>
+            <form method="post" action="{{ url_for('update_syllabus_status', subject=row.subject, chapter=row.chapter, topic=row.topic) }}">
+              <div class="sort-row">
+                <select name="status">
+                  <option value="Not Started" {% if row.status == 'Not Started' %}selected{% endif %}>Not Started</option>
+                  <option value="In Progress" {% if row.status == 'In Progress' %}selected{% endif %}>In Progress</option>
+                  <option value="Completed" {% if row.status == 'Completed' %}selected{% endif %}>Completed</option>
+                </select>
+                <button class="mini-button subtle" type="submit">Update</button>
+              </div>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  </main>
+
+  <nav class="bottom-nav" aria-label="Main navigation">
+    <a class="nav-item" href="{{ url_for('dashboard') }}"><span>🏠</span><small>Dashboard</small></a>
+    <a class="nav-item" href="{{ url_for('tasks_page') }}"><span>✅</span><small>Tasks</small></a>
+    <a class="nav-item" href="{{ url_for('timer_page') }}"><span>⏱️</span><small>Timer</small></a>
+    <a class="nav-item" href="{{ url_for('analytics_page') }}"><span>📊</span><small>Analytics</small></a>
+    <a class="nav-item active" href="{{ url_for('syllabus_page') }}"><span>📚</span><small>Syllabus</small></a>
+  </nav>
+{% endblock %}

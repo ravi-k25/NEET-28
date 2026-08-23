@@ -1,0 +1,232 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <header class="topbar">
+    <div class="brand-block">
+      <div class="brand-icon">N</div>
+      <div>
+        <p class="eyebrow">NEET Study Companion</p>
+        <h1>{{ greeting }}</h1>
+      </div>
+    </div>
+    <button class="icon-button" aria-label="Notifications">🔔</button>
+  </header>
+
+  <main class="dashboard">
+    <section class="card mission-card">
+      <div class="card-head">
+        <h2>Today's Mission</h2>
+        <span class="tag tag-purple">Focus</span>
+      </div>
+
+      <div class="metric-row">
+        <div>
+          <span class="label">Study target</span>
+          <strong>{{ target_hours }}h</strong>
+        </div>
+        <div>
+          <span class="label">Studied</span>
+          <strong>{{ studied_display }}</strong>
+        </div>
+      </div>
+
+      <div class="metric-row compact">
+        <div>
+          <span class="label">Remaining</span>
+          <strong>{{ remaining_display }}</strong>
+        </div>
+        <div>
+          <span class="label">Progress</span>
+          <strong>{{ progress }}%</strong>
+        </div>
+      </div>
+
+      <div class="progress-track" aria-label="Study progress">
+        <div class="progress-fill" style="width: {{ progress }}%;"></div>
+      </div>
+
+      <div class="dashboard-summary-row">
+        <div>
+          <span class="label">Focus sessions</span>
+          <strong>{{ focus_sessions }}</strong>
+        </div>
+        <div>
+          <span class="label">Status</span>
+          <strong>{{ '🎯 Done!' if progress >= 100 else 'On track' }}</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="quick-actions" aria-label="Quick actions">
+      <a class="action-button primary" href="{{ url_for('timer_page') }}">Start Focus Session</a>
+      <a class="action-button" href="{{ url_for('tasks_page', open='add') }}">Add Task</a>
+      <a class="action-button" href="{{ url_for('analytics_page') }}">View Analytics</a>
+    </section>
+
+    <section class="card small-metrics-card">
+      <div class="card-head">
+        <h2>Productivity Pulse</h2>
+        <span class="tag {% if productivity_score >= 70 %}tag-green{% else %}tag-warm{% endif %}">{{ productivity_score }}%</span>
+      </div>
+      <div class="metric-row compact">
+        <div>
+          <span class="label">Focus score</span>
+          <strong>{{ productivity_score }}%</strong>
+        </div>
+        <div>
+          <span class="label">Distraction</span>
+          <strong>{{ distraction_minutes }}m</strong>
+        </div>
+      </div>
+      <p class="muted-copy">{{ productivity_explanation }}</p>
+    </section>
+
+    <section class="card list-card">
+      <div class="card-head">
+        <h2>Today's Tasks</h2>
+        {% if today_tasks %}
+          <a class="card-link" href="{{ url_for('tasks_page') }}">View All Tasks</a>
+        {% endif %}
+      </div>
+
+      {% if today_tasks %}
+        <div class="mini-task-list">
+          {% for task in today_tasks %}
+            <div class="mini-task-item">
+              <div>
+                <strong>{{ task.title }}</strong>
+                <small>{{ task.subject }} · {{ task.priority }}</small>
+              </div>
+              <span class="mini-status status-{{ task.status | lower | replace(' ', '-') }}">{{ task.status }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <div class="empty-icon">✨</div>
+          <p>No missions yet. Let's plan your day ✨</p>
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="card list-card">
+      <div class="card-head">
+        <h2>Upcoming Test</h2>
+        {% if upcoming_test %}
+          <a class="card-link" href="{{ url_for('tests_page') }}">View all</a>
+        {% endif %}
+      </div>
+      {% if upcoming_test %}
+        <div class="mini-task-list">
+          <div class="mini-task-item">
+            <div>
+              <strong>{{ upcoming_test.test_name }}</strong>
+              <small>{{ upcoming_test.test_date }} · {{ upcoming_test.test_time }}</small>
+            </div>
+            <span class="mini-status status-in-progress">{{ upcoming_test.status }}</span>
+          </div>
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <div class="empty-icon">🎯</div>
+          <p>No upcoming tests 🎯</p>
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="card list-card">
+      <div class="card-head">
+        <h2>Revision Due</h2>
+        <a class="card-link" href="{{ url_for('revisions_page') }}">Review</a>
+      </div>
+      {% if revision_due %}
+        <div class="mini-task-list">
+          {% for revision in revision_due %}
+            <div class="mini-task-item">
+              <div>
+                <strong>{{ revision.subject }} · {{ revision.chapter }}</strong>
+                <small>{{ revision.topic }} · {{ revision.revision_date }}</small>
+              </div>
+              <span class="mini-status status-pending">{{ revision.status }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <div class="empty-icon">🔁</div>
+          <p>No revision reminders today.</p>
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="card list-card">
+      <div class="card-head">
+        <h2>Syllabus Progress</h2>
+        <a class="card-link" href="{{ url_for('syllabus_page') }}">Open tracker</a>
+      </div>
+      <div class="mini-task-list">
+        <div class="mini-task-item">
+          <div>
+            <strong>{{ syllabus_summary.completed }} completed</strong>
+            <small>{{ syllabus_summary.total }} total topics</small>
+          </div>
+          <span class="mini-status status-completed">{{ syllabus_summary.completion_rate }}%</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card streak-card">
+      <div class="streak-left">
+        <div class="streak-icon">🔥</div>
+        <div>
+          <span class="label">Study Streak</span>
+          <h3>{{ streak_days }} Days</h3>
+        </div>
+      </div>
+      <span class="tag tag-pink">Consistency</span>
+    </section>
+
+    {% if overdue_count > 0 %}
+      <section class="overdue-banner">
+        <p>⚠️ {{ overdue_count }} overdue mission{% if overdue_count != 1 %}s{% endif %}</p>
+        <small>This one slipped away. Let's handle it now 💪</small>
+      </section>
+    {% endif %}
+
+    <section class="motivation-box">
+      <p>{{ motivational_message }}</p>
+      <small>Next action: {{ next_action }}</small>
+    </section>
+  </main>
+
+  <nav class="bottom-nav" aria-label="Main navigation">
+    <a class="nav-item active" href="{{ url_for('dashboard') }}">
+      <span>🏠</span>
+      <small>Dashboard</small>
+    </a>
+    <a class="nav-item" href="{{ url_for('tasks_page') }}">
+      <span>✅</span>
+      <small>Tasks</small>
+    </a>
+    <a class="nav-item" href="{{ url_for('timer_page') }}">
+      <span>⏱️</span>
+      <small>Timer</small>
+    </a>
+    <a class="nav-item" href="{{ url_for('analytics_page') }}">
+      <span>📊</span>
+      <small>Analytics</small>
+    </a>
+    <a class="nav-item" href="{{ url_for('tests_page') }}">
+      <span>📝</span>
+      <small>Tests</small>
+    </a>
+    <a class="nav-item" href="{{ url_for('revisions_page') }}">
+      <span>🔁</span>
+      <small>Revision</small>
+    </a>
+    <a class="nav-item" href="{{ url_for('settings_page') }}">
+      <span>⚙️</span>
+      <small>Settings</small>
+    </a>
+  </nav>
+{% endblock %}
