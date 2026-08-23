@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const modalOpenButtons = document.querySelectorAll('[data-open-modal]');
   const modalCloseButtons = document.querySelectorAll('[data-close-modal]');
+  const closeButtons = document.querySelectorAll('[data-close-modal]');
 
   const openModal = (modalId) => {
     const modal = document.getElementById(modalId);
@@ -69,12 +70,13 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   const editButtons = document.querySelectorAll('[data-edit-task]');
-  const form = document.querySelector('.task-form');
+  const taskModal = document.getElementById('task-modal');
+  const form = taskModal ? taskModal.querySelector('.task-form') : null;
 
   editButtons.forEach((button) => {
     button.addEventListener('click', () => {
       const card = button.closest('.task-card');
-      if (!card || !form) return;
+      if (!card || !form || !taskModal) return;
 
       const taskId = card.dataset.id;
       form.action = `/tasks/${taskId}/edit`;
@@ -82,20 +84,20 @@ document.addEventListener('DOMContentLoaded', () => {
       form.querySelector('select[name="subject"]').value = card.dataset.subject || 'Other';
       form.querySelector('input[name="chapter"]').value = card.dataset.chapter || '';
       form.querySelector('select[name="priority"]').value = card.dataset.priority || 'Medium';
-      form.querySelector('input[name="estimated_minutes"]').value = card.dataset.estimatedMinutes || '45';
+      form.querySelector('input[name="estimated_minutes"]').value = card.dataset.estimatedMinutes || card.dataset.estimatedMinutes || '45';
       form.querySelector('input[name="deadline"]').value = card.dataset.deadline || '';
       form.querySelector('select[name="status"]').value = card.dataset.status || 'Pending';
 
-      const modalTitle = document.querySelector('#task-modal .modal-header h2');
+      const modalTitle = taskModal.querySelector('.modal-header h2');
       if (modalTitle) {
         modalTitle.textContent = 'Edit Task';
       }
 
-      openModal();
+      openModal('task-modal');
     });
   });
 
-  const modalTitle = document.querySelector('#task-modal .modal-header h2');
+  const modalTitle = taskModal ? taskModal.querySelector('.modal-header h2') : null;
   if (modalTitle && form) {
     const originalSubmit = form.querySelector('button[type="submit"]');
     if (originalSubmit) {

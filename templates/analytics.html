@@ -239,10 +239,14 @@
       <span>📊</span>
       <small>Analytics</small>
     </a>
-    <button class="nav-item" type="button">
-      <span>⋯</span>
-      <small>More</small>
-    </button>
+    <a class="nav-item" href="{{ url_for('tests_page') }}">
+      <span>📝</span>
+      <small>Tests</small>
+    </a>
+    <a class="nav-item" href="{{ url_for('settings_page') }}">
+      <span>⚙️</span>
+      <small>Settings</small>
+    </a>
   </nav>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
