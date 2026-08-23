@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta
+from contextlib import contextmanager
 import random
 import sqlite3
 from pathlib import Path
@@ -84,10 +85,18 @@ PERSONAL_MESSAGE_MAP = {
 }
 
 
+@contextmanager
 def get_db_connection():
-    connection = sqlite3.connect(DATABASE_PATH)
-    connection.row_factory = sqlite3.Row
-    return connection
+    connection = sqlite3.connect(DATABASE_PATH, timeout=30.0)
+    try:
+        connection.execute("PRAGMA journal_mode=WAL;")
+        connection.row_factory = sqlite3.Row
+        yield connection
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 def init_db():
@@ -269,7 +278,7 @@ def init_db():
             """
         )
 
-        sync_syllabus_seed()
+        sync_syllabus_seed(connection)
         connection.commit()
 
 
@@ -926,9 +935,10 @@ def get_daily_review():
     studied_minutes = get_today_study_minutes()
     completed_tasks = get_task_summary()["completed_count"]
     total_tasks = get_task_summary()["total_tasks"]
-    completed_revisions = int(get_db_connection().execute("SELECT COUNT(*) FROM revisions WHERE status = 'Completed' AND date(completed_at) = date('now')").fetchone()[0] or 0)
-    total_revisions = int(get_db_connection().execute("SELECT COUNT(*) FROM revisions WHERE date(revision_date) = date('now')").fetchone()[0] or 0)
-    completed_tests = int(get_db_connection().execute("SELECT COUNT(*) FROM tests WHERE status = 'Completed' AND date(test_date) = date('now')").fetchone()[0] or 0)
+    with get_db_connection() as connection:
+        completed_revisions = int(connection.execute("SELECT COUNT(*) FROM revisions WHERE status = 'Completed' AND date(completed_at) = date('now')").fetchone()[0] or 0)
+        total_revisions = int(connection.execute("SELECT COUNT(*) FROM revisions WHERE date(revision_date) = date('now')").fetchone()[0] or 0)
+        completed_tests = int(connection.execute("SELECT COUNT(*) FROM tests WHERE status = 'Completed' AND date(test_date) = date('now')").fetchone()[0] or 0)
     distraction_minutes = get_today_distraction_summary()["total_minutes"]
     score = get_productivity_score()["score"]
     streak = get_streak_summary()["current"]
@@ -948,8 +958,8 @@ def get_daily_review():
     }
 
 
-def sync_syllabus_seed():
-    with get_db_connection() as connection:
+def sync_syllabus_seed(connection=None):
+    if connection is not None:
         for subject, chapters in SYLLABUS_SEED.items():
             for chapter, topics in chapters.items():
                 for topic in topics:
@@ -960,7 +970,10 @@ def sync_syllabus_seed():
                         """,
                         (subject, chapter, topic),
                     )
-        connection.commit()
+        return
+
+    with get_db_connection() as connection:
+        sync_syllabus_seed(connection)
 
 
 def get_syllabus_progress_for_view():
