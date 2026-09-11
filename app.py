@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from contextlib import contextmanager
 import random
 import sqlite3
@@ -15,8 +15,7 @@ app = Flask(__name__)
 SUBJECTS = ["Physics", "Chemistry", "Biology", "Other"]
 PRIORITIES = ["High", "Medium", "Low"]
 STATUSES = ["Pending", "In Progress", "Completed"]
-TEST_STATUSES = ["Upcoming", "Completed"]
-REVISION_STATUSES = ["Due", "Completed", "Snoozed"]
+TEST_STATUSES = ["Upcoming", "Completed", "Missed"]
 SYLLABUS_SEED = {
     "Biology": {
         "Human Physiology": ["Digestive System", "Respiratory System", "Circulatory System", "Excretory System"],
@@ -210,23 +209,6 @@ def init_db():
 
         connection.execute(
             """
-            CREATE TABLE IF NOT EXISTS revisions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                subject TEXT NOT NULL,
-                chapter TEXT NOT NULL,
-                topic TEXT NOT NULL,
-                learned_date TEXT NOT NULL,
-                revision_date TEXT NOT NULL,
-                revision_number INTEGER NOT NULL,
-                status TEXT DEFAULT 'Due',
-                completed_at TEXT,
-                created_at TEXT DEFAULT CURRENT_DATE
-            )
-            """
-        )
-
-        connection.execute(
-            """
             CREATE TABLE IF NOT EXISTS mistakes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 subject TEXT NOT NULL,
@@ -267,17 +249,6 @@ def init_db():
             """
         )
 
-        connection.execute(
-            """
-            INSERT OR IGNORE INTO app_settings (key, value) VALUES
-                ('strict_mode', '0'),
-                ('preferred_study_mode', 'pomodoro'),
-                ('break_message_toggle', '1'),
-                ('achievement_celebration_toggle', '1'),
-                ('daily_motivational_messages_toggle', '1')
-            """
-        )
-
         sync_syllabus_seed(connection)
         connection.commit()
 
@@ -297,15 +268,6 @@ def set_setting(key, value):
             (key, str(value)),
         )
         connection.commit()
-
-
-def get_strict_mode_enabled():
-    value = get_setting("strict_mode", "0")
-    return str(value).strip().lower() in {"1", "true", "yes", "on"}
-
-
-def set_strict_mode_enabled(value):
-    set_setting("strict_mode", "1" if bool(value) else "0")
 
 
 def format_minutes(minutes):
@@ -731,21 +693,15 @@ def get_productivity_score():
     studied_minutes = get_today_study_minutes()
     total_task_count = get_task_summary()["total_tasks"]
     completed_task_count = get_task_summary()["completed_count"]
-    revision_total = 0
-    revision_completed = 0
-    with get_db_connection() as connection:
-        revision_total = int(connection.execute("SELECT COUNT(*) FROM revisions WHERE date(revision_date) = date('now')").fetchone()[0] or 0)
-        revision_completed = int(connection.execute("SELECT COUNT(*) FROM revisions WHERE status = 'Completed' AND date(completed_at) = date('now')").fetchone()[0] or 0)
     distraction_summary = get_today_distraction_summary()
     distraction_minutes = distraction_summary["total_minutes"]
 
     study_completion = min((studied_minutes / target_minutes) * 100, 100) if target_minutes else 0
     task_completion = (completed_task_count / total_task_count * 100) if total_task_count else 100
-    revision_completion = (revision_completed / revision_total * 100) if revision_total else 100
     distraction_control = max(100 - min(distraction_minutes, 180), 0)
 
-    # Formula: 60% study target + 20% task completion + 10% revision completion + 10% distraction control.
-    raw_score = (study_completion * 0.60) + (task_completion * 0.20) + (revision_completion * 0.10) + (distraction_control * 0.10)
+    # Formula: 60% study target + 25% task completion + 15% distraction control.
+    raw_score = (study_completion * 0.60) + (task_completion * 0.25) + (distraction_control * 0.15)
     score = round(max(0, min(raw_score, 100)))
 
     if score >= 80:
@@ -761,7 +717,6 @@ def get_productivity_score():
         "score": score,
         "study_completion": round(study_completion, 1),
         "task_completion": round(task_completion, 1),
-        "revision_completion": round(revision_completion, 1),
         "distraction_control": distraction_control,
         "explanation": explanation,
     }
@@ -864,26 +819,6 @@ def get_contextual_message(category, context=None):
     return random.choice(messages)
 
 
-def generate_strict_mode_message():
-    target_minutes = get_daily_study_target_minutes()
-    studied_minutes = get_today_study_minutes()
-    distraction_minutes = get_today_distraction_summary()["total_minutes"]
-    task_summary = get_task_summary()
-    overdue_count = task_summary["overdue_count"]
-    remaining_minutes = max(target_minutes - studied_minutes, 0)
-    if studied_minutes < target_minutes * 0.35:
-        return f"You planned {format_minutes(target_minutes)} and completed {format_minutes(studied_minutes)}. Start one focus session now."
-    if overdue_count >= 2:
-        return "Several tasks are overdue. Stop postponing and handle the most important one first."
-    if distraction_minutes > studied_minutes:
-        return "Your distraction time is higher than your study time today. Phone away. Focus session starts now."
-    if remaining_minutes <= 60:
-        return "You're close. One more focused session and today's mission is done."
-    if studied_minutes >= target_minutes:
-        return "MISSION COMPLETE. You've earned your rest."
-    return "Stay honest. One focused block is enough to move this day forward."
-
-
 def generate_normal_mode_message():
     target_minutes = get_daily_study_target_minutes()
     studied_minutes = get_today_study_minutes()
@@ -896,24 +831,11 @@ def generate_normal_mode_message():
     return "You are doing better than you think. Keep the rhythm going. ❤️"
 
 
-def get_settings_payload():
-    return {
-        "strict_mode": get_strict_mode_enabled(),
-        "preferred_study_mode": get_setting("preferred_study_mode", "pomodoro"),
-        "break_message_toggle": get_setting("break_message_toggle", "1") not in {"0", "false", "False", "no", "off"},
-        "achievement_celebration_toggle": get_setting("achievement_celebration_toggle", "1") not in {"0", "false", "False", "no", "off"},
-        "daily_motivational_messages_toggle": get_setting("daily_motivational_messages_toggle", "1") not in {"0", "false", "False", "no", "off"},
-    }
-
-
 def get_next_action_recommendation():
     task_summary = get_task_summary()
-    revision_due = get_due_revisions(limit=1)
     next_test = get_next_test()
     target_minutes = get_daily_study_target_minutes()
     studied_minutes = get_today_study_minutes()
-    if revision_due:
-        return f"🔁 Complete your {revision_due[0]['subject']} revision."
     if task_summary["overdue_count"] > 0:
         return "🎯 Finish one overdue high-priority task before anything else."
     if studied_minutes < target_minutes * 0.6:
@@ -930,26 +852,21 @@ def get_next_action_recommendation():
 
 
 def get_daily_review():
-    today = date.today().isoformat()
-    target_minutes = get_daily_study_target_minutes()
     studied_minutes = get_today_study_minutes()
     completed_tasks = get_task_summary()["completed_count"]
     total_tasks = get_task_summary()["total_tasks"]
     with get_db_connection() as connection:
-        completed_revisions = int(connection.execute("SELECT COUNT(*) FROM revisions WHERE status = 'Completed' AND date(completed_at) = date('now')").fetchone()[0] or 0)
-        total_revisions = int(connection.execute("SELECT COUNT(*) FROM revisions WHERE date(revision_date) = date('now')").fetchone()[0] or 0)
         completed_tests = int(connection.execute("SELECT COUNT(*) FROM tests WHERE status = 'Completed' AND date(test_date) = date('now')").fetchone()[0] or 0)
     distraction_minutes = get_today_distraction_summary()["total_minutes"]
     score = get_productivity_score()["score"]
     streak = get_streak_summary()["current"]
 
-    if studied_minutes <= 0 and total_tasks == 0 and total_revisions == 0 and completed_tests == 0 and distraction_minutes == 0:
+    if studied_minutes <= 0 and total_tasks == 0 and completed_tests == 0 and distraction_minutes == 0:
         return None
 
     return {
         "study_minutes": studied_minutes,
         "tasks": f"{completed_tasks}/{total_tasks}",
-        "revisions": f"{completed_revisions}/{total_revisions}",
         "tests": f"{completed_tests}",
         "distraction_minutes": distraction_minutes,
         "productivity": score,
@@ -1004,10 +921,14 @@ def get_syllabus_summary():
 
 def get_next_test():
     with get_db_connection() as connection:
+        connection.execute(
+            "UPDATE tests SET status = 'Missed' WHERE status = 'Upcoming' AND date(test_date) < date('now')"
+        )
+        connection.commit()
         row = connection.execute(
             """
             SELECT * FROM tests
-            WHERE date(test_date) >= date('now')
+            WHERE status = 'Upcoming' AND date(test_date) >= date('now')
             ORDER BY date(test_date) ASC, test_time ASC
             LIMIT 1
             """
@@ -1017,18 +938,22 @@ def get_next_test():
 
 def get_tests_for_view():
     with get_db_connection() as connection:
+        connection.execute(
+            "UPDATE tests SET status = 'Missed' WHERE status = 'Upcoming' AND date(test_date) < date('now')"
+        )
+        connection.commit()
         rows = connection.execute(
             """
             SELECT * FROM tests
             ORDER BY date(test_date) ASC, test_time ASC
             """
         ).fetchall()
-    items = []
-    for row in rows:
-        item = dict(row)
-        result = connection.execute("SELECT * FROM test_results WHERE test_id = ?", (row["id"],)).fetchone()
-        item["result"] = dict(result) if result is not None else None
-        items.append(item)
+        items = []
+        for row in rows:
+            item = dict(row)
+            result = connection.execute("SELECT * FROM test_results WHERE test_id = ?", (row["id"],)).fetchone()
+            item["result"] = dict(result) if result is not None else None
+            items.append(item)
     return items
 
 
@@ -1037,30 +962,8 @@ def get_test_summary():
         total = connection.execute("SELECT COUNT(*) AS count FROM tests").fetchone()["count"]
         upcoming = connection.execute("SELECT COUNT(*) AS count FROM tests WHERE status = 'Upcoming'").fetchone()["count"]
         completed = connection.execute("SELECT COUNT(*) AS count FROM tests WHERE status = 'Completed'").fetchone()["count"]
-    return {"total": total, "upcoming": upcoming, "completed": completed}
-
-
-def get_due_revisions(limit=3):
-    with get_db_connection() as connection:
-        rows = connection.execute(
-            """
-            SELECT * FROM revisions
-            WHERE status != 'Completed'
-            ORDER BY date(revision_date) ASC, revision_number DESC
-            LIMIT ?
-            """,
-            (limit,),
-        ).fetchall()
-    return [dict(row) for row in rows]
-
-
-def get_revision_summary():
-    with get_db_connection() as connection:
-        total = connection.execute("SELECT COUNT(*) AS count FROM revisions").fetchone()["count"]
-        due = connection.execute("SELECT COUNT(*) AS count FROM revisions WHERE status = 'Due'").fetchone()["count"]
-        snoozed = connection.execute("SELECT COUNT(*) AS count FROM revisions WHERE status = 'Snoozed'").fetchone()["count"]
-        completed = connection.execute("SELECT COUNT(*) AS count FROM revisions WHERE status = 'Completed'").fetchone()["count"]
-    return {"total": total, "due": due, "snoozed": snoozed, "completed": completed}
+        missed = connection.execute("SELECT COUNT(*) AS count FROM tests WHERE status = 'Missed'").fetchone()["count"]
+    return {"total": total, "upcoming": upcoming, "completed": completed, "missed": missed}
 
 
 def get_mistakes_for_view():
@@ -1103,12 +1006,17 @@ def fetch_tasks_for_view(status_filter="All", subject_filter="All", priority_fil
     params = []
 
     if status_filter == "Today":
-        query += " AND (date(created_at) = date('now') OR date(deadline) = date('now'))"
+        query += " AND (date(created_at) = date('now') OR date(deadline) = date('now') OR date(completed_at) = date('now'))"
     elif status_filter == "Overdue":
         query += " AND status != 'Completed' AND deadline IS NOT NULL AND date(deadline) < date('now')"
     elif status_filter != "All":
         query += " AND status = ?"
         params.append(status_filter)
+
+    if status_filter == "All":
+        query += " AND (status != 'Completed' OR date(completed_at) = date('now'))"
+    elif status_filter == "Completed":
+        query += " AND date(completed_at) = date('now')"
 
     if subject_filter != "All":
         query += " AND subject = ?"
@@ -1172,8 +1080,12 @@ def get_today_study_minutes():
 
 def get_task_summary():
     with get_db_connection() as connection:
-        total = connection.execute("SELECT COUNT(*) AS count FROM tasks").fetchone()["count"]
-        completed = connection.execute("SELECT COUNT(*) AS count FROM tasks WHERE status = 'Completed'").fetchone()["count"]
+        total = connection.execute(
+            "SELECT COUNT(*) AS count FROM tasks WHERE status != 'Completed' OR date(completed_at) = date('now')"
+        ).fetchone()["count"]
+        completed = connection.execute(
+            "SELECT COUNT(*) AS count FROM tasks WHERE status = 'Completed' AND date(completed_at) = date('now')"
+        ).fetchone()["count"]
         pending = connection.execute("SELECT COUNT(*) AS count FROM tasks WHERE status != 'Completed'").fetchone()["count"]
         overdue = get_overdue_count()
 
@@ -1211,20 +1123,16 @@ def dashboard():
     remaining_minutes = max(target_minutes - studied_minutes, 0)
     progress = min(int((studied_minutes / target_minutes) * 100), 100) if target_minutes else 0
     focus_sessions = get_focus_session_count_for_date()
-    with get_db_connection() as connection:
-        streak_days = int(connection.execute("SELECT value FROM app_settings WHERE key = 'streak_days'").fetchone()["value"]) if connection.execute("SELECT value FROM app_settings WHERE key = 'streak_days'").fetchone() else 0
     overdue_count = get_overdue_count()
     today_tasks = get_dashboard_tasks(limit=4)
     habit = get_streak_summary()
     productivity = get_productivity_score()
     distraction_summary = get_today_distraction_summary()
     achievements = refresh_achievements()
-    strict_mode = get_strict_mode_enabled()
-    motivational_message = generate_strict_mode_message() if strict_mode else generate_normal_mode_message()
+    motivational_message = generate_normal_mode_message()
     next_action = get_next_action_recommendation()
 
     upcoming_test = get_next_test()
-    revision_due = get_due_revisions(limit=3)
     syllabus_summary = get_syllabus_summary()
 
     return render_template(
@@ -1239,7 +1147,6 @@ def dashboard():
         progress=progress,
         focus_sessions=focus_sessions,
         streak_days=habit["current"],
-        strict_mode=strict_mode,
         productivity_score=productivity["score"],
         productivity_explanation=productivity["explanation"],
         distraction_minutes=distraction_summary["total_minutes"],
@@ -1249,39 +1156,8 @@ def dashboard():
         today_tasks=today_tasks,
         overdue_count=overdue_count,
         upcoming_test=upcoming_test,
-        revision_due=revision_due,
         syllabus_summary=syllabus_summary,
         page_name="dashboard",
-    )
-
-
-@app.route("/settings", methods=["GET", "POST"])
-def settings_page():
-    if request.method == "POST":
-        strict_mode = request.form.get("strict_mode") == "on"
-        preferred_study_mode = request.form.get("preferred_study_mode", "pomodoro")
-        break_message_toggle = request.form.get("break_message_toggle") == "on"
-        achievement_celebration_toggle = request.form.get("achievement_celebration_toggle") == "on"
-        daily_motivational_messages_toggle = request.form.get("daily_motivational_messages_toggle") == "on"
-
-        if preferred_study_mode not in TIMER_PRESETS:
-            preferred_study_mode = "pomodoro"
-
-        set_strict_mode_enabled(strict_mode)
-        set_setting("preferred_study_mode", preferred_study_mode)
-        set_setting("break_message_toggle", "1" if break_message_toggle else "0")
-        set_setting("achievement_celebration_toggle", "1" if achievement_celebration_toggle else "0")
-        set_setting("daily_motivational_messages_toggle", "1" if daily_motivational_messages_toggle else "0")
-        return redirect(url_for("settings_page", message="Settings updated ✅"))
-
-    settings = get_settings_payload()
-    return render_template(
-        "settings.html",
-        settings=settings,
-        timer_presets=TIMER_PRESETS,
-        page_name="settings",
-        success_message=request.args.get("message"),
-        error_message=request.args.get("error"),
     )
 
 
@@ -1345,6 +1221,11 @@ def add_test():
     except ValueError:
         return redirect(url_for("tests_page", error="Test date must be in YYYY-MM-DD format."))
 
+    try:
+        datetime.strptime(test_time, "%H:%M")
+    except ValueError:
+        return redirect(url_for("tests_page", error="Test time must be in HH:MM format."))
+
     if status not in TEST_STATUSES:
         status = "Upcoming"
 
@@ -1359,6 +1240,21 @@ def add_test():
         connection.commit()
 
     return redirect(url_for("tests_page", message="Test scheduled successfully ✅"))
+
+
+@app.route("/tests/<int:test_id>/status", methods=["POST"])
+def update_test_status(test_id):
+    new_status = request.form.get("status", "Upcoming")
+    if new_status not in TEST_STATUSES:
+        return redirect(url_for("tests_page", error="Invalid test status."))
+
+    with get_db_connection() as connection:
+        cursor = connection.execute("UPDATE tests SET status = ? WHERE id = ?", (new_status, test_id))
+        if cursor.rowcount == 0:
+            return redirect(url_for("tests_page", error="Test not found."))
+        connection.commit()
+
+    return redirect(url_for("tests_page", message="Test status updated."))
 
 
 @app.route("/tests/<int:test_id>/result", methods=["POST"])
@@ -1377,6 +1273,10 @@ def save_test_result(test_id):
     except ValueError:
         return redirect(url_for("tests_page", error="All result fields must be valid numbers."))
 
+    numeric_values = [physics, chemistry, biology, attempted, correct, incorrect, unattempted, silly_mistakes, conceptual_mistakes, total_marks]
+    if any(value < 0 for value in numeric_values):
+        return redirect(url_for("tests_page", error="Result fields cannot be negative."))
+
     total_score = physics + chemistry + biology
     if total_marks <= 0:
         total_marks = max(total_score, 0)
@@ -1385,11 +1285,16 @@ def save_test_result(test_id):
     if unattempted <= 0:
         unattempted = max(total_marks - attempted, 0)
 
+    if total_score > total_marks or attempted > total_marks or correct + incorrect > attempted or unattempted != total_marks - attempted:
+        return redirect(url_for("tests_page", error="Check scores, attempts, and unattempted questions."))
+
     percentage = round((total_score / total_marks) * 100, 1) if total_marks else 0
     accuracy = round((correct / attempted) * 100, 1) if attempted else 0
     attempt_rate = round((attempted / total_marks) * 100, 1) if total_marks else 0
 
     with get_db_connection() as connection:
+        if connection.execute("SELECT id FROM tests WHERE id = ?", (test_id,)).fetchone() is None:
+            return redirect(url_for("tests_page", error="Test not found."))
         connection.execute(
             """
             INSERT INTO test_results (
@@ -1462,80 +1367,15 @@ def update_syllabus_status(subject, chapter, topic):
         return redirect(url_for("syllabus_page", error="Invalid syllabus status."))
 
     with get_db_connection() as connection:
-        connection.execute(
+        cursor = connection.execute(
             "UPDATE syllabus_progress SET status = ?, updated_at = date('now') WHERE subject = ? AND chapter = ? AND topic = ?",
             (new_status, subject, chapter, topic),
         )
+        if cursor.rowcount == 0:
+            return redirect(url_for("syllabus_page", error="Syllabus topic not found."))
         connection.commit()
 
     return redirect(url_for("syllabus_page", message="Syllabus progress updated ✅"))
-
-
-@app.route("/revisions")
-def revisions_page():
-    rows = []
-    with get_db_connection() as connection:
-        rows = connection.execute(
-            "SELECT * FROM revisions ORDER BY date(revision_date) ASC, subject ASC, chapter ASC"
-        ).fetchall()
-    summary = get_revision_summary()
-    return render_template(
-        "revisions.html",
-        revisions=[dict(row) for row in rows],
-        summary=summary,
-        page_name="revisions",
-        success_message=request.args.get("message"),
-        error_message=request.args.get("error"),
-        today=date.today().isoformat(),
-    )
-
-
-@app.route("/revisions/add", methods=["POST"])
-def add_revision():
-    subject = request.form.get("subject", "Biology")
-    chapter = (request.form.get("chapter") or "").strip()
-    topic = (request.form.get("topic") or "").strip()
-    learned_date = (request.form.get("learned_date") or date.today().isoformat()).strip()
-    revision_date = (request.form.get("revision_date") or date.today().isoformat()).strip()
-    revision_number = int(request.form.get("revision_number") or 1)
-
-    if not chapter or not topic:
-        return redirect(url_for("revisions_page", error="Chapter and topic are required."))
-
-    try:
-        datetime.strptime(learned_date, "%Y-%m-%d")
-        datetime.strptime(revision_date, "%Y-%m-%d")
-    except ValueError:
-        return redirect(url_for("revisions_page", error="Dates must be in YYYY-MM-DD format."))
-
-    with get_db_connection() as connection:
-        connection.execute(
-            """
-            INSERT INTO revisions (subject, chapter, topic, learned_date, revision_date, revision_number, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, 'Due', date('now'))
-            """,
-            (subject, chapter, topic, learned_date, revision_date, revision_number),
-        )
-        connection.commit()
-
-    return redirect(url_for("revisions_page", message="Revision scheduled ✨"))
-
-
-@app.route("/revisions/<int:revision_id>/status", methods=["POST"])
-def update_revision_status(revision_id):
-    new_status = request.form.get("status", "Due")
-    if new_status not in REVISION_STATUSES:
-        return redirect(url_for("revisions_page", error="Invalid revision status."))
-
-    completed_at = date.today().isoformat() if new_status == "Completed" else None
-    with get_db_connection() as connection:
-        connection.execute(
-            "UPDATE revisions SET status = ?, completed_at = ? WHERE id = ?",
-            (new_status, completed_at, revision_id),
-        )
-        connection.commit()
-
-    return redirect(url_for("revisions_page", message="Revision updated ✅"))
 
 
 @app.route("/mistakes")
@@ -1593,7 +1433,9 @@ def update_mistake_status(mistake_id):
         return redirect(url_for("mistakes_page", error="Invalid mistake status."))
 
     with get_db_connection() as connection:
-        connection.execute("UPDATE mistakes SET status = ? WHERE id = ?", (new_status, mistake_id))
+        cursor = connection.execute("UPDATE mistakes SET status = ? WHERE id = ?", (new_status, mistake_id))
+        if cursor.rowcount == 0:
+            return redirect(url_for("mistakes_page", error="Mistake not found."))
         connection.commit()
 
     return redirect(url_for("mistakes_page", message="Mistake marked updated ✨"))
@@ -1602,7 +1444,9 @@ def update_mistake_status(mistake_id):
 @app.route("/mistakes/<int:mistake_id>/delete", methods=["POST"])
 def delete_mistake(mistake_id):
     with get_db_connection() as connection:
-        connection.execute("DELETE FROM mistakes WHERE id = ?", (mistake_id,))
+        cursor = connection.execute("DELETE FROM mistakes WHERE id = ?", (mistake_id,))
+        if cursor.rowcount == 0:
+            return redirect(url_for("mistakes_page", error="Mistake not found."))
         connection.commit()
     return redirect(url_for("mistakes_page", message="Mistake removed from your book."))
 
@@ -1797,6 +1641,10 @@ def update_task_status(task_id):
             (new_status, completed_at, task_id),
         )
         connection.commit()
+        updated_task = normalize_task(connection.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone())
+
+    if request.is_json or "application/json" in request.headers.get("Accept", ""):
+        return jsonify({"ok": True, "task": updated_task})
 
     if new_status == "Completed":
         message = random.choice(COMPLETION_MESSAGES)
@@ -1809,7 +1657,9 @@ def update_task_status(task_id):
 @app.route("/tasks/<int:task_id>/delete", methods=["POST"]) 
 def delete_task(task_id):
     with get_db_connection() as connection:
-        connection.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        cursor = connection.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        if cursor.rowcount == 0:
+            return redirect(url_for("tasks_page", error="Task not found."))
         connection.commit()
 
     return redirect(url_for("tasks_page", message="Mission removed. Fresh start, future doctor 💪"))
@@ -1851,7 +1701,7 @@ def edit_task(task_id):
     completed_at = date.today().isoformat() if status == "Completed" else None
 
     with get_db_connection() as connection:
-        connection.execute(
+        cursor = connection.execute(
             """
             UPDATE tasks
             SET title = ?, subject = ?, chapter = ?, priority = ?, estimated_minutes = ?,
@@ -1860,6 +1710,8 @@ def edit_task(task_id):
             """,
             (title, subject, chapter or None, priority, estimated_minutes, parsed_deadline, status, completed_at, task_id),
         )
+        if cursor.rowcount == 0:
+            return redirect(url_for("tasks_page", error="Task not found."))
         connection.commit()
 
     return redirect(url_for("tasks_page", message="Mission updated. Keep that momentum going ✨"))
@@ -1909,6 +1761,18 @@ def save_completed_session():
 
     started_at = payload.get("started_at") or datetime.utcnow().isoformat(timespec="seconds")
     completed_at = payload.get("completed_at") or datetime.utcnow().isoformat(timespec="seconds")
+    try:
+        started_timestamp = datetime.fromisoformat(str(started_at).replace("Z", "+00:00"))
+        completed_timestamp = datetime.fromisoformat(str(completed_at).replace("Z", "+00:00"))
+    except ValueError:
+        return jsonify({"ok": False, "error": "Invalid session timestamp."}), 400
+
+    if started_timestamp.tzinfo is None:
+        started_timestamp = started_timestamp.replace(tzinfo=timezone.utc)
+    if completed_timestamp.tzinfo is None:
+        completed_timestamp = completed_timestamp.replace(tzinfo=timezone.utc)
+    if completed_timestamp < started_timestamp:
+        return jsonify({"ok": False, "error": "Session completion cannot be before it started."}), 400
 
     with get_db_connection() as connection:
         connection.execute(

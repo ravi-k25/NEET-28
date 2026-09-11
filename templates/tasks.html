@@ -97,8 +97,9 @@
     </section>
 
     <section class="task-list">
-      {% if tasks %}
-        {% for task in tasks %}
+      {% set active_tasks = tasks | selectattr('status', 'ne', 'Completed') | list %}
+      {% if active_tasks %}
+        {% for task in active_tasks %}
           <article
             class="task-card {% if task.status == 'Completed' %}is-complete{% endif %} {% if task.deadline and task.status != 'Completed' and task.deadline < today %}is-overdue{% endif %}"
             data-id="{{ task.id }}"
@@ -146,13 +147,44 @@
             </div>
           </article>
         {% endfor %}
-      {% else %}
+      {% elif selected_status != 'Completed' %}
         <div class="empty-state large-empty">
           <div class="empty-icon">✨</div>
           <p>No missions yet. Let's plan your day ✨</p>
         </div>
       {% endif %}
     </section>
+
+    {% set completed_tasks = tasks | selectattr('status', 'equalto', 'Completed') | list %}
+    {% if completed_tasks %}
+      <details class="completed-section" {% if selected_status == 'Completed' %}open{% endif %}>
+        <summary>Completed Today <span class="tag tag-green">{{ completed_tasks | length }}</span></summary>
+        <div class="task-list">
+          {% for task in completed_tasks %}
+            <article class="task-card is-complete" data-id="{{ task.id }}">
+              <div class="task-top-row">
+                <div>
+                  <h3><span aria-hidden="true">✓</span> {{ task.title }}</h3>
+                  <p class="task-meta">{{ task.subject }}{% if task.chapter %} · {{ task.chapter }}{% endif %}</p>
+                </div>
+                <span class="priority-badge priority-low">Completed</span>
+              </div>
+              <div class="task-details">
+                <div><span>Duration</span><strong>{{ task.estimated_minutes }} min</strong></div>
+                <div><span>Deadline</span><strong>{{ task.deadline or 'No deadline' }}</strong></div>
+                <div><span>Status</span><strong>Completed</strong></div>
+              </div>
+              <div class="task-actions">
+                <form method="post" action="{{ url_for('update_task_status', task_id=task.id) }}">
+                  <input type="hidden" name="status" value="Pending" />
+                  <button type="submit" class="mini-button subtle">Undo</button>
+                </form>
+              </div>
+            </article>
+          {% endfor %}
+        </div>
+      </details>
+    {% endif %}
   </main>
 
   <div class="modal hidden" id="task-modal" aria-hidden="true">
@@ -245,10 +277,6 @@
     <a class="nav-item" href="{{ url_for('tests_page') }}">
       <span>📝</span>
       <small>Tests</small>
-    </a>
-    <a class="nav-item" href="{{ url_for('settings_page') }}">
-      <span>⚙️</span>
-      <small>Settings</small>
     </a>
   </nav>
 {% endblock %}

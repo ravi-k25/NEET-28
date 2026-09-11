@@ -243,10 +243,6 @@
       <span>📝</span>
       <small>Tests</small>
     </a>
-    <a class="nav-item" href="{{ url_for('settings_page') }}">
-      <span>⚙️</span>
-      <small>Settings</small>
-    </a>
   </nav>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -254,12 +250,12 @@
     const weeklyChartEl = document.getElementById('weeklyChart');
     const trendChartEl = document.getElementById('trendChart');
 
-    const weeklyData = {{ weekly_chart.values | tojson }};
-    const weeklyLabels = {{ weekly_chart.labels | tojson }};
-    const trend7 = {{ trend_7.values | tojson }};
-    const trend30 = {{ trend_30.values | tojson }};
-    const trend7Labels = {{ trend_7.labels | tojson }};
-    const trend30Labels = {{ trend_30.labels | tojson }};
+    const weeklyData = {{ weekly_chart["values"] | tojson }}.map((minutes) => minutes / 60);
+    const weeklyLabels = {{ weekly_chart["labels"] | tojson }};
+    const trend7 = {{ trend_7["values"] | tojson }}.map((minutes) => minutes / 60);
+    const trend30 = {{ trend_30["values"] | tojson }}.map((minutes) => minutes / 60);
+    const trend7Labels = {{ trend_7["labels"] | tojson }};
+    const trend30Labels = {{ trend_30["labels"] | tojson }};
 
     if (weeklyChartEl) {
       new Chart(weeklyChartEl, {
@@ -280,7 +276,8 @@
             y: {
               beginAtZero: true,
               ticks: {
-                callback: (value) => `${value}h`
+                stepSize: 1,
+                callback: (value) => `${Math.round(value)}h`
               }
             }
           }
@@ -310,7 +307,8 @@
           y: {
             beginAtZero: true,
             ticks: {
-              callback: (value) => `${value}h`
+              stepSize: 1,
+              callback: (value) => `${Math.round(value)}h`
             }
           }
         }

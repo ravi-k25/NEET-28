@@ -11,7 +11,6 @@ document.addEventListener('DOMContentLoaded', () => {
       (currentPage === 'analytics' && href === '/analytics') ||
       (currentPage === 'tests' && href === '/tests') ||
       (currentPage === 'syllabus' && href === '/syllabus') ||
-      (currentPage === 'revisions' && href === '/revisions') ||
       (currentPage === 'mistakes' && href === '/mistakes');
 
     if (isActive) {
@@ -44,6 +43,10 @@ document.addEventListener('DOMContentLoaded', () => {
   modalCloseButtons.forEach((button) => {
     button.addEventListener('click', () => closeModal(button.dataset.closeModal));
   });
+
+  if (currentPage === 'tasks' && new URLSearchParams(window.location.search).get('open') === 'add') {
+    openModal('task-modal');
+  }
 
   const filterFields = document.querySelectorAll('[data-filter-type]');
   const buildQueryString = () => {
@@ -144,16 +147,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const modeLabel = document.getElementById('modeLabel');
     const timerPhaseLabel = document.getElementById('timerPhaseLabel');
     const statusBox = document.getElementById('statusBox');
-    const modeButtons = document.querySelectorAll('[data-mode]');
+    const techniqueSelect = document.getElementById('techniqueSelect');
     const customSettings = document.getElementById('customSettings');
     const customStudyMinutes = document.getElementById('customStudyMinutes');
     const customBreakMinutes = document.getElementById('customBreakMinutes');
     const subjectSelect = document.getElementById('subjectSelect');
     const chapterInput = document.getElementById('chapterInput');
-    const quickPomodoroBtn = document.getElementById('quickPomodoroBtn');
-    const startBtn = document.getElementById('startBtn');
-    const pauseBtn = document.getElementById('pauseBtn');
-    const resumeBtn = document.getElementById('resumeBtn');
+    const timerControlBtn = document.getElementById('timerControlBtn');
     const resetBtn = document.getElementById('resetBtn');
     const skipBtn = document.getElementById('skipBtn');
 
@@ -212,13 +212,16 @@ document.addEventListener('DOMContentLoaded', () => {
       return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
     }
 
-    function updateModeButtons() {
-      modeButtons.forEach((button) => {
-        const isSelected = button.dataset.mode === state.mode;
-        button.classList.toggle('selected', isSelected);
-      });
+    function updateControls() {
+      techniqueSelect.value = state.mode;
       const customSelected = state.mode === 'custom';
       customSettings.classList.toggle('hidden', !customSelected);
+      if (state.isRunning) {
+        timerControlBtn.textContent = 'Pause';
+      } else {
+        const phaseDuration = (state.phase === 'focus' ? state.studyMinutes : state.breakMinutes) * 60 * 1000;
+        timerControlBtn.textContent = state.remainingMs < phaseDuration ? 'Resume' : 'Start';
+      }
     }
 
     function applyPresetSelection(modeKey) {
@@ -253,7 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
       timerBadge.textContent = formatTime(currentRemainingMs);
       modeLabel.textContent = state.phase === 'focus' ? (state.mode === 'custom' ? 'CUSTOM' : currentPreset.label) : 'BREAK';
       timerPhaseLabel.textContent = label;
-      updateModeButtons();
+      updateControls();
     }
 
     function startTimer() {
@@ -341,7 +344,7 @@ document.addEventListener('DOMContentLoaded', () => {
       state.isRunning = false;
       state.startedAt = null;
 
-      if (wasFocus) {
+      if (wasFocus && !skipped) {
         const sessionMinutes = state.studyMinutes;
         const finishedAt = new Date().toISOString();
         const startedAt = new Date(Date.now() - sessionMinutes * 60 * 1000).toISOString();
@@ -356,8 +359,10 @@ document.addEventListener('DOMContentLoaded', () => {
             started_at: startedAt,
             completed_at: finishedAt
           })
+        }).then((response) => {
+          if (!response.ok) throw new Error('Session save failed');
         }).catch(() => {
-          statusBox.textContent = 'Focus session complete. The session was saved locally in the browser for later sync. 💪';
+          statusBox.textContent = 'Focus session complete, but it could not be saved to your study history. Please keep this page open and try again. ⚠️';
         });
 
         statusBox.textContent = 'Focus session complete! 🎯❤️';
@@ -365,9 +370,11 @@ document.addEventListener('DOMContentLoaded', () => {
         state.remainingMs = state.breakMinutes * 60 * 1000;
         const breakMessage = BREAK_MESSAGES[Math.floor(Math.random() * BREAK_MESSAGES.length)];
         state.statusMessage = breakMessage;
-        if (!skipped) {
-          statusBox.textContent = `${breakMessage}`;
-        }
+        statusBox.textContent = `${breakMessage}`;
+      } else if (wasFocus) {
+        state.phase = 'focus';
+        state.remainingMs = state.studyMinutes * 60 * 1000;
+        statusBox.textContent = 'Focus cycle skipped. Ready when you are. 🌱';
       } else {
         state.phase = 'focus';
         state.remainingMs = state.studyMinutes * 60 * 1000;
@@ -378,25 +385,8 @@ document.addEventListener('DOMContentLoaded', () => {
       updateUI();
     }
 
-    modeButtons.forEach((button) => {
-      button.addEventListener('click', () => {
-        const modeKey = button.dataset.mode;
-        if (modeKey === 'custom') {
-          state.mode = 'custom';
-          state.phase = 'focus';
-          state.studyMinutes = Number(customStudyMinutes.value || 25);
-          state.breakMinutes = Number(customBreakMinutes.value || 5);
-          state.remainingMs = state.studyMinutes * 60 * 1000;
-          state.isRunning = false;
-          state.startedAt = null;
-          saveState(state);
-          updateUI();
-          statusBox.textContent = 'Custom focus mode selected. Set your perfect rhythm. 🌱';
-          customSettings.classList.remove('hidden');
-          return;
-        }
-        applyPresetSelection(modeKey);
-      });
+    techniqueSelect.addEventListener('change', () => {
+      applyPresetSelection(techniqueSelect.value);
     });
 
     customStudyMinutes.addEventListener('input', () => {
@@ -415,20 +405,25 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    startBtn.addEventListener('click', startTimer);
-    pauseBtn.addEventListener('click', pauseTimer);
-    resumeBtn.addEventListener('click', resumeTimer);
+    timerControlBtn.addEventListener('click', () => {
+      if (state.isRunning) {
+        pauseTimer();
+      } else if (state.remainingMs < state.totalDurationMs) {
+        resumeTimer();
+      } else {
+        startTimer();
+      }
+    });
     resetBtn.addEventListener('click', resetTimer);
     skipBtn.addEventListener('click', skipTimer);
-    quickPomodoroBtn.addEventListener('click', () => {
-      applyPresetSelection('pomodoro');
-      startTimer();
-    });
 
     if (state.mode === 'custom') {
       customSettings.classList.remove('hidden');
     }
 
     updateUI();
+    if (state.isRunning && state.startedAt) {
+      tickTimer();
+    }
   }
 });

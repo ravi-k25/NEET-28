@@ -9,7 +9,6 @@
         <h1>Study Timer</h1>
       </div>
     </div>
-    <button class="primary-action" type="button" id="quickPomodoroBtn">Start Pomodoro</button>
   </header>
 
   <main class="timer-page">
@@ -42,13 +41,29 @@
         </label>
       </div>
 
-      <div class="mode-selector" id="modeSelector">
-        {% for key, mode in mode_presets.items() %}
-          <button class="mode-button {% if key == 'pomodoro' %}selected{% endif %}" type="button" data-mode="{{ key }}">
-            {{ mode.label }}
-          </button>
-        {% endfor %}
-        <button class="mode-button custom" type="button" data-mode="custom">CUSTOM</button>
+      <div class="timer-control-row">
+        <label>
+          <span>Technique</span>
+          <select id="techniqueSelect">
+            {% for key, mode in mode_presets.items() %}
+              <option value="{{ key }}">{{ mode.label | title }}</option>
+            {% endfor %}
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+
+        <div class="timer-control-cell">
+          <span>Timer control</span>
+          <button type="button" class="primary-action timer-control-button" id="timerControlBtn">Start</button>
+        </div>
+
+        <div class="timer-control-cell">
+          <span>Reset / Skip</span>
+          <div class="timer-secondary-actions">
+            <button type="button" class="secondary-button" id="resetBtn">Reset</button>
+            <button type="button" class="secondary-button" id="skipBtn">Skip</button>
+          </div>
+        </div>
       </div>
 
       <div class="custom-settings hidden" id="customSettings">
@@ -121,10 +136,6 @@
     <a class="nav-item" href="{{ url_for('tests_page') }}">
       <span>📝</span>
       <small>Tests</small>
-    </a>
-    <a class="nav-item" href="{{ url_for('settings_page') }}">
-      <span>⚙️</span>
-      <small>Settings</small>
     </a>
   </nav>
 {% endblock %}

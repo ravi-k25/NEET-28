@@ -36,6 +36,10 @@
           <span class="label">Completed</span>
           <strong>{{ summary.completed }}</strong>
         </div>
+        <div>
+          <span class="label">Missed</span>
+          <strong>{{ summary.missed }}</strong>
+        </div>
       </div>
 
       {% if next_test %}
@@ -60,7 +64,7 @@
                 <h3>{{ test.test_name }}</h3>
                 <p class="task-meta">{{ test.test_date }} · {{ test.test_time }}</p>
               </div>
-              <span class="priority-badge priority-medium">{{ test.status }}</span>
+              <span class="test-status test-status-{{ test.status | lower }}">{{ test.status }}</span>
             </div>
 
             <div class="task-details">
@@ -81,6 +85,18 @@
                 </div>
               </div>
             {% endif %}
+
+            <form method="post" action="{{ url_for('update_test_status', test_id=test.id) }}" class="test-status-form">
+              <label>
+                <span>Status</span>
+                <select name="status">
+                  {% for status in ['Upcoming', 'Completed', 'Missed'] %}
+                    <option value="{{ status }}" {% if test.status == status %}selected{% endif %}>{{ status }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <button type="submit" class="secondary-button">Update status</button>
+            </form>
 
             <form method="post" action="{{ url_for('save_test_result', test_id=test.id) }}" class="task-form" style="margin-top: 1rem;">
               <div class="two-col">
@@ -172,6 +188,15 @@
             <input type="time" name="test_time" value="09:00" />
           </label>
         </div>
+
+        <label>
+          <span>Status</span>
+          <select name="status">
+            <option value="Upcoming" selected>Upcoming</option>
+            <option value="Completed">Completed</option>
+            <option value="Missed">Missed</option>
+          </select>
+        </label>
 
         <label>
           <span>Subjects</span>

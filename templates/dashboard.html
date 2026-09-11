@@ -141,31 +141,6 @@
 
     <section class="card list-card">
       <div class="card-head">
-        <h2>Revision Due</h2>
-        <a class="card-link" href="{{ url_for('revisions_page') }}">Review</a>
-      </div>
-      {% if revision_due %}
-        <div class="mini-task-list">
-          {% for revision in revision_due %}
-            <div class="mini-task-item">
-              <div>
-                <strong>{{ revision.subject }} · {{ revision.chapter }}</strong>
-                <small>{{ revision.topic }} · {{ revision.revision_date }}</small>
-              </div>
-              <span class="mini-status status-pending">{{ revision.status }}</span>
-            </div>
-          {% endfor %}
-        </div>
-      {% else %}
-        <div class="empty-state">
-          <div class="empty-icon">🔁</div>
-          <p>No revision reminders today.</p>
-        </div>
-      {% endif %}
-    </section>
-
-    <section class="card list-card">
-      <div class="card-head">
         <h2>Syllabus Progress</h2>
         <a class="card-link" href="{{ url_for('syllabus_page') }}">Open tracker</a>
       </div>
@@ -225,14 +200,6 @@
     <a class="nav-item" href="{{ url_for('tests_page') }}">
       <span>📝</span>
       <small>Tests</small>
-    </a>
-    <a class="nav-item" href="{{ url_for('revisions_page') }}">
-      <span>🔁</span>
-      <small>Revision</small>
-    </a>
-    <a class="nav-item" href="{{ url_for('settings_page') }}">
-      <span>⚙️</span>
-      <small>Settings</small>
     </a>
   </nav>
 {% endblock %}
