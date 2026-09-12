@@ -9,7 +9,6 @@
         <h1>Analytics</h1>
       </div>
     </div>
-    <a class="primary-action" href="{{ url_for('timer_page') }}">Start Focus</a>
   </header>
 
   {% if success_message %}
@@ -230,10 +229,6 @@
     <a class="nav-item" href="{{ url_for('tasks_page') }}">
       <span>✅</span>
       <small>Tasks</small>
-    </a>
-    <a class="nav-item" href="{{ url_for('timer_page') }}">
-      <span>⏱️</span>
-      <small>Timer</small>
     </a>
     <a class="nav-item active" href="{{ url_for('analytics_page') }}">
       <span>📊</span>

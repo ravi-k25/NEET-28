@@ -63,8 +63,7 @@
     </section>
 
     <section class="quick-actions" aria-label="Quick actions">
-      <a class="action-button primary" href="{{ url_for('timer_page') }}">Start Focus Session</a>
-      <a class="action-button" href="{{ url_for('tasks_page', open='add') }}">Add Task</a>
+      <a class="action-button primary" href="{{ url_for('tasks_page', open='add') }}">Add Task</a>
       <a class="action-button" href="{{ url_for('analytics_page') }}">View Analytics</a>
     </section>
 
@@ -188,10 +187,6 @@
     <a class="nav-item" href="{{ url_for('tasks_page') }}">
       <span>✅</span>
       <small>Tasks</small>
-    </a>
-    <a class="nav-item" href="{{ url_for('timer_page') }}">
-      <span>⏱️</span>
-      <small>Timer</small>
     </a>
     <a class="nav-item" href="{{ url_for('analytics_page') }}">
       <span>📊</span>

@@ -1,14 +1,14 @@
 from datetime import date, datetime, timedelta, timezone
 from contextlib import contextmanager
+import os
 import random
-import sqlite3
-from pathlib import Path
+
+import psycopg2
+import psycopg2.extras
 
 from flask import Flask, jsonify, redirect, render_template, request, url_for
 
-BASE_DIR = Path(__file__).resolve().parent
-DATABASE_DIR = BASE_DIR / "database"
-DATABASE_PATH = DATABASE_DIR / "neet_companion.db"
+DATABASE_URL = os.environ.get("POSTGRES_URL") or os.environ.get("DATABASE_URL")
 
 app = Flask(__name__)
 
@@ -42,11 +42,6 @@ BREAK_MESSAGES = [
     "Take a deep breath. You've got this 🫶",
     "Rest properly. Recovery is part of studying too ❤️",
 ]
-TIMER_PRESETS = {
-    "pomodoro": {"label": "POMODORO", "study_minutes": 25, "break_minutes": 5, "session_type": "pomodoro"},
-    "standard": {"label": "STANDARD", "study_minutes": 50, "break_minutes": 10, "session_type": "standard"},
-    "deep_work": {"label": "DEEP WORK", "study_minutes": 90, "break_minutes": 15, "session_type": "deep_work"},
-}
 COMPLETION_MESSAGES = [
     "Done! One step closer to that NEET seat 🩺❤️",
     "Another mission defeated 😤🔥",
@@ -84,12 +79,33 @@ PERSONAL_MESSAGE_MAP = {
 }
 
 
+class _ExecuteConnection:
+    """Wraps a psycopg2 connection so callers can keep using
+    sqlite3-style `connection.execute(sql, params)` calls."""
+
+    def __init__(self, raw_connection):
+        self._raw = raw_connection
+
+    def execute(self, query, params=()):
+        cursor = self._raw.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute(query.replace("?", "%s"), tuple(params))
+        return cursor
+
+    def commit(self):
+        self._raw.commit()
+
+    def rollback(self):
+        self._raw.rollback()
+
+    def close(self):
+        self._raw.close()
+
+
 @contextmanager
 def get_db_connection():
-    connection = sqlite3.connect(DATABASE_PATH, timeout=30.0)
+    raw_connection = psycopg2.connect(DATABASE_URL)
+    connection = _ExecuteConnection(raw_connection)
     try:
-        connection.execute("PRAGMA journal_mode=WAL;")
-        connection.row_factory = sqlite3.Row
         yield connection
     except Exception:
         connection.rollback()
@@ -99,8 +115,6 @@ def get_db_connection():
 
 
 def init_db():
-    DATABASE_DIR.mkdir(exist_ok=True)
-
     with get_db_connection() as connection:
         connection.execute(
             """
@@ -113,18 +127,19 @@ def init_db():
 
         connection.execute(
             """
-            INSERT OR IGNORE INTO app_settings (key, value) VALUES
+            INSERT INTO app_settings (key, value) VALUES
                 ('daily_study_target_minutes', '480'),
                 ('daily_study_target_hours', '8'),
                 ('completed_study_hours', '0'),
                 ('streak_days', '0')
+            ON CONFLICT (key) DO NOTHING
             """
         )
 
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 title TEXT NOT NULL,
                 subject TEXT DEFAULT 'Other',
                 chapter TEXT,
@@ -132,7 +147,7 @@ def init_db():
                 estimated_minutes INTEGER NOT NULL,
                 deadline TEXT,
                 status TEXT DEFAULT 'Pending',
-                created_at TEXT DEFAULT CURRENT_DATE,
+                created_at TEXT DEFAULT (CURRENT_DATE)::text,
                 completed_at TEXT
             )
             """
@@ -141,7 +156,7 @@ def init_db():
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS study_sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 subject TEXT NOT NULL,
                 chapter TEXT,
                 duration_minutes INTEGER NOT NULL,
@@ -155,7 +170,7 @@ def init_db():
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS tests (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 test_name TEXT NOT NULL,
                 test_date TEXT NOT NULL,
                 test_time TEXT NOT NULL,
@@ -163,7 +178,7 @@ def init_db():
                 syllabus TEXT,
                 notes TEXT,
                 status TEXT DEFAULT 'Upcoming',
-                created_at TEXT DEFAULT CURRENT_DATE
+                created_at TEXT DEFAULT (CURRENT_DATE)::text
             )
             """
         )
@@ -171,7 +186,7 @@ def init_db():
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS test_results (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 test_id INTEGER NOT NULL UNIQUE,
                 physics_score INTEGER DEFAULT 0,
                 chemistry_score INTEGER DEFAULT 0,
@@ -187,7 +202,7 @@ def init_db():
                 percentage REAL DEFAULT 0,
                 accuracy REAL DEFAULT 0,
                 attempt_rate REAL DEFAULT 0,
-                created_at TEXT DEFAULT CURRENT_DATE,
+                created_at TEXT DEFAULT (CURRENT_DATE)::text,
                 FOREIGN KEY (test_id) REFERENCES tests(id)
             )
             """
@@ -196,12 +211,12 @@ def init_db():
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS syllabus_progress (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 subject TEXT NOT NULL,
                 chapter TEXT NOT NULL,
                 topic TEXT NOT NULL,
                 status TEXT DEFAULT 'Not Started',
-                updated_at TEXT DEFAULT CURRENT_DATE,
+                updated_at TEXT DEFAULT (CURRENT_DATE)::text,
                 UNIQUE(subject, chapter, topic)
             )
             """
@@ -210,7 +225,7 @@ def init_db():
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS mistakes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 subject TEXT NOT NULL,
                 chapter TEXT,
                 question TEXT,
@@ -220,7 +235,7 @@ def init_db():
                 test_id INTEGER,
                 review_date TEXT,
                 status TEXT DEFAULT 'Open',
-                created_at TEXT DEFAULT CURRENT_DATE,
+                created_at TEXT DEFAULT (CURRENT_DATE)::text,
                 FOREIGN KEY (test_id) REFERENCES tests(id)
             )
             """
@@ -229,11 +244,11 @@ def init_db():
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS distractions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 type TEXT NOT NULL,
                 duration_minutes INTEGER NOT NULL,
                 note TEXT,
-                created_at TEXT DEFAULT CURRENT_DATE
+                created_at TEXT DEFAULT (CURRENT_DATE)::text
             )
             """
         )
@@ -241,10 +256,10 @@ def init_db():
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS achievement_unlocks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 key TEXT NOT NULL UNIQUE,
                 title TEXT NOT NULL,
-                unlocked_at TEXT NOT NULL DEFAULT CURRENT_DATE
+                unlocked_at TEXT NOT NULL DEFAULT (CURRENT_DATE)::text
             )
             """
         )
@@ -770,7 +785,7 @@ def get_streak_summary():
 def unlock_achievement(key, title):
     with get_db_connection() as connection:
         connection.execute(
-            "INSERT OR IGNORE INTO achievement_unlocks (key, title, unlocked_at) VALUES (?, ?, date('now'))",
+            "INSERT INTO achievement_unlocks (key, title, unlocked_at) VALUES (?, ?, date('now')) ON CONFLICT (key) DO NOTHING",
             (key, title),
         )
         connection.commit()
@@ -786,13 +801,13 @@ def refresh_achievements():
     target_minutes = get_daily_study_target_minutes()
     streak = get_streak_summary()
     with get_db_connection() as connection:
-        total_focus_sessions = int(connection.execute("SELECT COUNT(*) FROM study_sessions").fetchone()[0] or 0)
-        completed_chapters = int(connection.execute("SELECT COUNT(*) FROM syllabus_progress WHERE status = 'Completed'").fetchone()[0] or 0)
-        completed_tests = int(connection.execute("SELECT COUNT(*) FROM tests WHERE status = 'Completed'").fetchone()[0] or 0)
-        reviewed_mistakes = int(connection.execute("SELECT COUNT(*) FROM mistakes WHERE status = 'Reviewed'").fetchone()[0] or 0)
+        total_focus_sessions = int(connection.execute("SELECT COUNT(*) FROM study_sessions").fetchone()["count"] or 0)
+        completed_chapters = int(connection.execute("SELECT COUNT(*) FROM syllabus_progress WHERE status = 'Completed'").fetchone()["count"] or 0)
+        completed_tests = int(connection.execute("SELECT COUNT(*) FROM tests WHERE status = 'Completed'").fetchone()["count"] or 0)
+        reviewed_mistakes = int(connection.execute("SELECT COUNT(*) FROM mistakes WHERE status = 'Reviewed'").fetchone()["count"] or 0)
         best_accuracy = connection.execute("SELECT MAX(percentage) AS best FROM test_results").fetchone()["best"]
         best_accuracy = float(best_accuracy or 0)
-        five_hour_days = int(connection.execute("SELECT COUNT(*) FROM (SELECT date(completed_at) AS day, SUM(duration_minutes) AS total FROM study_sessions GROUP BY date(completed_at)) WHERE total >= 300").fetchone()[0] or 0)
+        five_hour_days = int(connection.execute("SELECT COUNT(*) FROM (SELECT date(completed_at) AS day, SUM(duration_minutes) AS total FROM study_sessions GROUP BY date(completed_at)) AS daily_totals WHERE total >= 300").fetchone()["count"] or 0)
 
     if total_focus_sessions >= 1:
         unlock_achievement("first_focus_session", "First Focus Session")
@@ -856,7 +871,7 @@ def get_daily_review():
     completed_tasks = get_task_summary()["completed_count"]
     total_tasks = get_task_summary()["total_tasks"]
     with get_db_connection() as connection:
-        completed_tests = int(connection.execute("SELECT COUNT(*) FROM tests WHERE status = 'Completed' AND date(test_date) = date('now')").fetchone()[0] or 0)
+        completed_tests = int(connection.execute("SELECT COUNT(*) FROM tests WHERE status = 'Completed' AND date(test_date) = date('now')").fetchone()["count"] or 0)
     distraction_minutes = get_today_distraction_summary()["total_minutes"]
     score = get_productivity_score()["score"]
     streak = get_streak_summary()["current"]
@@ -882,8 +897,9 @@ def sync_syllabus_seed(connection=None):
                 for topic in topics:
                     connection.execute(
                         """
-                        INSERT OR IGNORE INTO syllabus_progress (subject, chapter, topic, status, updated_at)
+                        INSERT INTO syllabus_progress (subject, chapter, topic, status, updated_at)
                         VALUES (?, ?, ?, 'Not Started', date('now'))
+                        ON CONFLICT (subject, chapter, topic) DO NOTHING
                         """,
                         (subject, chapter, topic),
                     )
@@ -1715,76 +1731,6 @@ def edit_task(task_id):
         connection.commit()
 
     return redirect(url_for("tasks_page", message="Mission updated. Keep that momentum going ✨"))
-
-
-@app.route("/timer")
-def timer_page():
-    today_minutes = get_today_study_minutes()
-    target_minutes = get_daily_study_target_minutes()
-    remaining_minutes = max(target_minutes - today_minutes, 0)
-    progress = min(int((today_minutes / target_minutes) * 100), 100) if target_minutes else 0
-
-    return render_template(
-        "timer.html",
-        subjects=SUBJECTS,
-        today_study_display=format_minutes(today_minutes),
-        target_display=format_minutes(target_minutes),
-        remaining_display=format_minutes(remaining_minutes),
-        progress=progress,
-        mode_presets=TIMER_PRESETS,
-        page_name="timer",
-    )
-
-
-@app.route("/timer/session", methods=["POST"])
-def save_completed_session():
-    payload = request.get_json(silent=True) or request.form.to_dict()
-
-    subject = payload.get("subject", "Other")
-    if subject not in SUBJECTS:
-        subject = "Other"
-
-    chapter = (payload.get("chapter") or "").strip()
-    duration_minutes = payload.get("duration_minutes")
-    session_type = payload.get("session_type", "custom")
-
-    try:
-        duration_minutes = int(duration_minutes)
-    except (TypeError, ValueError):
-        return jsonify({"ok": False, "error": "Invalid duration."}), 400
-
-    if duration_minutes <= 0:
-        return jsonify({"ok": False, "error": "Duration must be positive."}), 400
-
-    if session_type not in {"pomodoro", "standard", "deep_work", "custom"}:
-        session_type = "custom"
-
-    started_at = payload.get("started_at") or datetime.utcnow().isoformat(timespec="seconds")
-    completed_at = payload.get("completed_at") or datetime.utcnow().isoformat(timespec="seconds")
-    try:
-        started_timestamp = datetime.fromisoformat(str(started_at).replace("Z", "+00:00"))
-        completed_timestamp = datetime.fromisoformat(str(completed_at).replace("Z", "+00:00"))
-    except ValueError:
-        return jsonify({"ok": False, "error": "Invalid session timestamp."}), 400
-
-    if started_timestamp.tzinfo is None:
-        started_timestamp = started_timestamp.replace(tzinfo=timezone.utc)
-    if completed_timestamp.tzinfo is None:
-        completed_timestamp = completed_timestamp.replace(tzinfo=timezone.utc)
-    if completed_timestamp < started_timestamp:
-        return jsonify({"ok": False, "error": "Session completion cannot be before it started."}), 400
-
-    with get_db_connection() as connection:
-        connection.execute(
-            """
-            INSERT INTO study_sessions (subject, chapter, duration_minutes, session_type, started_at, completed_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (subject, chapter or None, duration_minutes, session_type, started_at, completed_at),
-        )
-        connection.commit()
-
-    return jsonify({"ok": True, "message": "Focus session saved."})
 
 
 if __name__ == "__main__":
